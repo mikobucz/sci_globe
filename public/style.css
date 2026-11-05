@@ -1,0 +1,387 @@
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  user-select: none;
+  border-radius: 0 !important;
+}
+body {
+  background-color: #0e1013;
+  color: #c8cbd2;
+  font-family: Georgia, Cambria, "Times New Roman", Times, serif;
+  font-size: 12px;
+  overflow: hidden;
+  width: 100vw;
+  height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  cursor: grab;
+}
+canvas:active {
+  cursor: grabbing;
+}
+
+/* GŁÓWNY PRZYCISK OPCJI NA EKRANIE */
+.btn-options-main {
+  position: absolute;
+  top: 14px;
+  right: 16px;
+  background: #121418;
+  border: 1px solid #2b2f38;
+  color: #d2d6df;
+  padding: 6px 14px;
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+  z-index: 50;
+  transition: all 0.15s;
+}
+.btn-options-main:hover {
+  border-color: #58a6ff;
+  color: #58a6ff;
+}
+
+/* DYSKRETNY PASEK STATUSU I PRZEŁĄCZNIK WIDOKU 2D/GLOB (LEWY GÓRNY RÓG) */
+.status-badge {
+  position: absolute;
+  top: 14px;
+  left: 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: #717784;
+  font-size: 11px;
+  z-index: 50;
+}
+.status-dot {
+  width: 6px;
+  height: 6px;
+  background: #3fb950;
+  display: inline-block;
+}
+.status-dot.frozen {
+  background: #555b66;
+}
+.btn-view-toggle {
+  background: #121418;
+  border: 1px solid #2b2f38;
+  color: #58a6ff;
+  font-family: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  padding: 4px 10px;
+  transition: all 0.15s;
+}
+.btn-view-toggle:hover {
+  border-color: #58a6ff;
+  color: #82baff;
+}
+
+/* WYSUWANY PANEL OPCJI (DRAWER) - KITTENS GAME STYLE */
+.sidebar-drawer {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  width: 390px;
+  max-width: 95vw;
+  background: #121418;
+  border-left: 1px solid #22262f;
+  display: flex;
+  flex-direction: column;
+  z-index: 100;
+  transform: translateX(100%);
+  transition: transform 0.18s ease-out;
+}
+.sidebar-drawer.open {
+  transform: translateX(0);
+}
+
+.drawer-header {
+  padding: 14px 18px;
+  border-bottom: 1px solid #1f2229;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+.drawer-header .title {
+  font-size: 14px;
+  color: #e5e8ef;
+  font-weight: normal;
+  letter-spacing: 0.5px;
+}
+.drawer-close {
+  background: none;
+  border: none;
+  color: #6e7683;
+  cursor: pointer;
+  font-size: 13px;
+  font-family: inherit;
+  padding: 2px 4px;
+}
+.drawer-close:hover {
+  color: #e5e8ef;
+}
+
+/* JEDNA CIĄGŁA LISTA OPCJI */
+.drawer-content {
+  padding: 16px 20px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* WYBÓR ZBIORU DANYCH I PRESET */
+.kg-select {
+  width: 100%;
+  background: transparent;
+  border: 1px solid #2a2e37;
+  color: #d6dae3;
+  padding: 6px 8px;
+  font-family: inherit;
+  font-size: 12px;
+  outline: none;
+  cursor: pointer;
+  margin-top: 4px;
+}
+.kg-select:focus {
+  border-color: #58a6ff;
+}
+
+/* PRZYCISKI TEKSTOWE KITTENS GAME */
+.kg-actions-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 4px;
+}
+.kg-text-btn {
+  background: none;
+  border: none;
+  color: #58a6ff;
+  font-family: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  text-decoration: underline;
+  padding: 0;
+}
+.kg-text-btn:hover {
+  color: #82baff;
+}
+.kg-text-btn.active {
+  color: #f0883e;
+}
+
+/* POJEDYNCZE USTAWIENIE: ETYKIETA + SUWAK + NUMER + NOTATKA */
+.kg-param {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #1a1c22;
+}
+.kg-param-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+.kg-param-header .name {
+  font-size: 13px;
+  color: #dde0e8;
+}
+.kg-param-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* SUWAK */
+input[type="range"].kg-slider {
+  flex: 1;
+  height: 2px;
+  background: #292d36;
+  border: none;
+  outline: none;
+  cursor: pointer;
+  -webkit-appearance: none;
+}
+input[type="range"].kg-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 10px;
+  height: 12px;
+  background: #737a87;
+  cursor: pointer;
+  border: none;
+}
+input[type="range"].kg-slider::-webkit-slider-thumb:hover {
+  background: #58a6ff;
+}
+
+/* POLE NUMERYCZNE */
+input[type="number"].kg-num-input {
+  width: 64px;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid #313540;
+  color: #58a6ff;
+  font-family: inherit;
+  font-size: 12px;
+  padding: 2px 4px;
+  text-align: right;
+  outline: none;
+}
+input[type="number"].kg-num-input:focus {
+  border-bottom-color: #58a6ff;
+}
+
+/* POLE TEKSTOWE (NP. NAZWA PRESETU) */
+input[type="text"].kg-text-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid #313540;
+  color: #d6dae3;
+  font-family: inherit;
+  font-size: 12px;
+  padding: 3px 4px;
+  outline: none;
+}
+input[type="text"].kg-text-input:focus {
+  border-bottom-color: #58a6ff;
+}
+input[type="text"].kg-text-input::placeholder {
+  color: #5c6270;
+}
+
+/* CZYTELNA NOTATKA POD USTAWIENIEM */
+.kg-note {
+  font-size: 11px;
+  color: #7d8390;
+  line-height: 1.45;
+  margin-top: 2px;
+}
+.kg-note strong {
+  color: #adb3be;
+  font-weight: normal;
+}
+.kg-note .dir {
+  color: #9aa2af;
+}
+
+/* PRZEŁĄCZNIKI WIDOKU */
+.kg-toggle-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #1a1c22;
+}
+.kg-toggle-row .label {
+  font-size: 12px;
+  color: #dde0e8;
+}
+input[type="checkbox"].kg-check {
+  accent-color: #58a6ff;
+  cursor: pointer;
+  width: 14px;
+  height: 14px;
+}
+
+/* INSPEKTOR DANYCH PRACY (LEWY BOK) */
+.inspector-drawer {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 360px;
+  max-width: 90vw;
+  background: #121418;
+  border-right: 1px solid #22262f;
+  display: none;
+  flex-direction: column;
+  z-index: 90;
+  padding: 16px 20px;
+  gap: 12px;
+  overflow-y: auto;
+}
+.ins-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 11px;
+  color: #6e7683;
+}
+.ins-title {
+  font-size: 15px;
+  color: #fff;
+  line-height: 1.4;
+  font-weight: normal;
+}
+.ins-meta {
+  font-size: 12px;
+  color: #8c92a0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border-bottom: 1px solid #1d2027;
+  padding-bottom: 10px;
+}
+.ins-meta span strong {
+  color: #58a6ff;
+  font-weight: normal;
+}
+.ins-links-label {
+  font-size: 11px;
+  color: #717784;
+  margin-top: 4px;
+}
+.ins-conn-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 4px;
+}
+.ins-conn-row {
+  padding: 5px 0;
+  border-bottom: 1px solid #171920;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 11px;
+  color: #9da3af;
+}
+.ins-conn-row:hover {
+  color: #fff;
+}
+.ins-conn-row .cites {
+  color: #58a6ff;
+  margin-left: 8px;
+}
+
+/* MINIMALNY DYSKRETNY TOOLTIP */
+#tooltip {
+  position: absolute;
+  display: none;
+  pointer-events: none;
+  background: #121418;
+  border: 1px solid #58a6ff;
+  padding: 6px 10px;
+  font-size: 11px;
+  color: #fff;
+  z-index: 150;
+  transform: translate(-50%, -125%);
+  white-space: nowrap;
+}
+#tooltip .cit {
+  color: #58a6ff;
+}
+

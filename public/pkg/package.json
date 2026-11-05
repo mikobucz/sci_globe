@@ -1,0 +1,19 @@
+{
+  "name": "mathmap",
+  "type": "module",
+  "collaborators": [
+    "MathMap System Engineering"
+  ],
+  "description": "Ultra-high-performance SoA Force-Directed & Spherical Riemann Graph Simulation Engine in Rust + WebAssembly",
+  "version": "0.2.0",
+  "files": [
+    "mathmap_bg.wasm",
+    "mathmap.js",
+    "mathmap.d.ts"
+  ],
+  "main": "mathmap.js",
+  "types": "mathmap.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}
