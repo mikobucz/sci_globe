@@ -1,0 +1,2035 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MathMap & Global Science Atlas</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+      border-radius: 0 !important;
+    }
+    body {
+      background-color: #0e1013;
+      color: #c8cbd2;
+      font-family: Georgia, Cambria, "Times New Roman", Times, serif;
+      font-size: 12px;
+      overflow: hidden;
+      width: 100vw;
+      height: 100vh;
+      -webkit-font-smoothing: antialiased;
+    }
+    canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+      cursor: grab;
+    }
+    canvas:active {
+      cursor: grabbing;
+    }
+
+    /* GŁÓWNY PRZYCISK OPCJI NA EKRANIE */
+    .btn-options-main {
+      position: absolute;
+      top: 14px;
+      right: 16px;
+      background: #121418;
+      border: 1px solid #2b2f38;
+      color: #d2d6df;
+      padding: 6px 14px;
+      font-size: 12px;
+      font-family: inherit;
+      cursor: pointer;
+      z-index: 50;
+      transition: all 0.15s;
+    }
+    .btn-options-main:hover {
+      border-color: #58a6ff;
+      color: #58a6ff;
+    }
+
+    /* DYSKRETNY PASEK STATUSU I PRZEŁĄCZNIK WIDOKU 2D/GLOB (LEWY GÓRNY RÓG) */
+    .status-badge {
+      position: absolute;
+      top: 14px;
+      left: 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      color: #717784;
+      font-size: 11px;
+      z-index: 50;
+    }
+    .status-dot {
+      width: 6px;
+      height: 6px;
+      background: #3fb950;
+      display: inline-block;
+    }
+    .status-dot.frozen {
+      background: #555b66;
+    }
+    .btn-view-toggle {
+      background: #121418;
+      border: 1px solid #2b2f38;
+      color: #58a6ff;
+      font-family: inherit;
+      font-size: 11px;
+      cursor: pointer;
+      padding: 4px 10px;
+      transition: all 0.15s;
+    }
+    .btn-view-toggle:hover {
+      border-color: #58a6ff;
+      color: #82baff;
+    }
+
+    /* WYSOUWANY PANEL OPCJI (DRAWER) - KITTENS GAME STYLE */
+    .sidebar-drawer {
+      position: fixed;
+      top: 0;
+      bottom: 0;
+      right: 0;
+      width: 390px;
+      max-width: 95vw;
+      background: #121418;
+      border-left: 1px solid #22262f;
+      display: flex;
+      flex-direction: column;
+      z-index: 100;
+      transform: translateX(100%);
+      transition: transform 0.18s ease-out;
+    }
+    .sidebar-drawer.open {
+      transform: translateX(0);
+    }
+
+    .drawer-header {
+      padding: 14px 18px;
+      border-bottom: 1px solid #1f2229;
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+    }
+    .drawer-header .title {
+      font-size: 14px;
+      color: #e5e8ef;
+      font-weight: normal;
+      letter-spacing: 0.5px;
+    }
+    .drawer-close {
+      background: none;
+      border: none;
+      color: #6e7683;
+      cursor: pointer;
+      font-size: 13px;
+      font-family: inherit;
+      padding: 2px 4px;
+    }
+    .drawer-close:hover {
+      color: #e5e8ef;
+    }
+
+    /* JEDNA CIĄGŁA LISTA OPCJI */
+    .drawer-content {
+      padding: 16px 20px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    /* WYBÓR ZBIORU DANYCH I PRESET */
+    .kg-select {
+      width: 100%;
+      background: transparent;
+      border: 1px solid #2a2e37;
+      color: #d6dae3;
+      padding: 6px 8px;
+      font-family: inherit;
+      font-size: 12px;
+      outline: none;
+      cursor: pointer;
+      margin-top: 4px;
+    }
+    .kg-select:focus {
+      border-color: #58a6ff;
+    }
+
+    /* PRZYCISKI TEKSTOWE KITTENS GAME */
+    .kg-actions-strip {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-top: 4px;
+    }
+    .kg-text-btn {
+      background: none;
+      border: none;
+      color: #58a6ff;
+      font-family: inherit;
+      font-size: 12px;
+      cursor: pointer;
+      text-decoration: underline;
+      padding: 0;
+    }
+    .kg-text-btn:hover {
+      color: #82baff;
+    }
+    .kg-text-btn.active {
+      color: #f0883e;
+    }
+
+    /* POJEDYNCZE USTAWIENIE: ETYKIETA + SUWAK + NUMER + NOTATKA */
+    .kg-param {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid #1a1c22;
+    }
+    .kg-param-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+    }
+    .kg-param-header .name {
+      font-size: 13px;
+      color: #dde0e8;
+    }
+    .kg-param-controls {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    
+    /* SUWAK */
+    input[type="range"].kg-slider {
+      flex: 1;
+      height: 2px;
+      background: #292d36;
+      border: none;
+      outline: none;
+      cursor: pointer;
+      -webkit-appearance: none;
+    }
+    input[type="range"].kg-slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 10px;
+      height: 12px;
+      background: #737a87;
+      cursor: pointer;
+      border: none;
+    }
+    input[type="range"].kg-slider::-webkit-slider-thumb:hover {
+      background: #58a6ff;
+    }
+
+    /* POLE NUMERYCZNE */
+    input[type="number"].kg-num-input {
+      width: 64px;
+      background: transparent;
+      border: none;
+      border-bottom: 1px solid #313540;
+      color: #58a6ff;
+      font-family: inherit;
+      font-size: 12px;
+      padding: 2px 4px;
+      text-align: right;
+      outline: none;
+    }
+    input[type="number"].kg-num-input:focus {
+      border-bottom-color: #58a6ff;
+    }
+
+    /* CZYTELNA NOTATKA POD USTAWIENIEM */
+    .kg-note {
+      font-size: 11px;
+      color: #7d8390;
+      line-height: 1.45;
+      margin-top: 2px;
+    }
+    .kg-note strong {
+      color: #adb3be;
+      font-weight: normal;
+    }
+    .kg-note .dir {
+      color: #9aa2af;
+    }
+
+    /* PRZEŁĄCZNIKI WIDOKU */
+    .kg-toggle-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-bottom: 10px;
+      border-bottom: 1px solid #1a1c22;
+    }
+    .kg-toggle-row .label {
+      font-size: 12px;
+      color: #dde0e8;
+    }
+    input[type="checkbox"].kg-check {
+      accent-color: #58a6ff;
+      cursor: pointer;
+      width: 14px;
+      height: 14px;
+    }
+
+    /* INSPEKTOR DANYCH PRACY (LEWY BOK) */
+    .inspector-drawer {
+      position: fixed;
+      top: 0;
+      bottom: 0;
+      left: 0;
+      width: 360px;
+      max-width: 90vw;
+      background: #121418;
+      border-right: 1px solid #22262f;
+      display: none;
+      flex-direction: column;
+      z-index: 90;
+      padding: 16px 20px;
+      gap: 12px;
+      overflow-y: auto;
+    }
+    .ins-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      font-size: 11px;
+      color: #6e7683;
+    }
+    .ins-title {
+      font-size: 15px;
+      color: #fff;
+      line-height: 1.4;
+      font-weight: normal;
+    }
+    .ins-meta {
+      font-size: 12px;
+      color: #8c92a0;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      border-bottom: 1px solid #1d2027;
+      padding-bottom: 10px;
+    }
+    .ins-meta span strong {
+      color: #58a6ff;
+      font-weight: normal;
+    }
+    .ins-links-label {
+      font-size: 11px;
+      color: #717784;
+      margin-top: 4px;
+    }
+    .ins-conn-list {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      margin-top: 4px;
+    }
+    .ins-conn-row {
+      padding: 5px 0;
+      border-bottom: 1px solid #171920;
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      font-size: 11px;
+      color: #9da3af;
+    }
+    .ins-conn-row:hover {
+      color: #fff;
+    }
+    .ins-conn-row .cites {
+      color: #58a6ff;
+      margin-left: 8px;
+    }
+
+    /* MINIMALNY DYSKRETNY TOOLTIP */
+    #tooltip {
+      position: absolute;
+      display: none;
+      pointer-events: none;
+      background: #121418;
+      border: 1px solid #58a6ff;
+      padding: 6px 10px;
+      font-size: 11px;
+      color: #fff;
+      z-index: 150;
+      transform: translate(-50%, -125%);
+      white-space: nowrap;
+    }
+    #tooltip .cit {
+      color: #58a6ff;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- DYSKRETNY STATUS I PRZEŁĄCZNIK WIDOKU 2D / GLOB 3D -->
+  <div class="status-badge">
+    <div class="status-dot" id="status-dot"></div>
+    <span id="status-text">Aktywna</span>
+    <span>&bull;</span>
+    <span id="node-count">1 000 prac</span>
+    <span>&bull;</span>
+    <button class="btn-view-toggle" id="btn-view-toggle">[ Widok: Glob 3D &rarr; ]</button>
+  </div>
+
+  <!-- JEDYNY GŁÓWNY PRZYCISK: OPCJE -->
+  <button class="btn-options-main" id="btn-toggle-options">[ Opcje ]</button>
+
+  <canvas id="atlas-canvas"></canvas>
+  <div id="tooltip"></div>
+
+  <!-- JEDNA CIĄGŁA SEKCJA OPCJI (KITTENS GAME STYLE) -->
+  <div class="sidebar-drawer" id="sidebar">
+    <div class="drawer-header">
+      <div class="title">Opcje Symulacji</div>
+      <button class="drawer-close" id="btn-close-sidebar">[ zamknij ]</button>
+    </div>
+
+    <div class="drawer-content">
+
+      <!-- WYBÓR ZBIORU DANYCH -->
+      <div class="kg-param">
+        <div class="kg-param-header">
+          <span class="name">Zbiór wiedzy (Dataset)</span>
+        </div>
+        <select class="kg-select" id="select-dataset">
+          <option value="global" selected>Wszystkie Nauki Świata (Global - 4 000 prac)</option>
+          <option value="math">Tylko Matematyka (Oryginalny - 1 000 prac)</option>
+        </select>
+        <div class="kg-note">
+          <strong>Global</strong>: Matematyka, Fizyka, Chemia, Biologia, Medycyna, Humanistyka.<br>
+          <strong>Matematyka</strong>: 10 oficjalnych subfieldów czystej i stosowanej matematyki.
+        </div>
+      </div>
+
+      <!-- SAMPLING PRAC ZE ZBIORU + OSOBNY SEED SAMPLINGU -->
+      <div class="kg-param">
+        <div class="kg-param-header">
+          <span class="name">Aktywne prace w symulacji</span>
+        </div>
+        <div class="kg-param-controls">
+          <input type="range" class="kg-slider" id="p-sample-count" min="100" max="4000" step="50" value="1000">
+          <input type="number" class="kg-num-input" id="num-sample-count" min="100" max="4000" step="50" value="1000">
+        </div>
+        <div style="display:flex; align-items:baseline; gap:8px; margin-top:4px;">
+          <span style="font-size:11px; color:#8c92a0;">Ziarno doboru prac (Dataset Seed):</span>
+          <input type="number" class="kg-num-input" id="input-dataset-seed" value="1337" style="width:75px; text-align:left;">
+        </div>
+        <div style="display:flex; align-items:center; gap:8px; margin-top:8px;">
+          <input type="checkbox" class="kg-check" id="chk-only-connected">
+          <label for="chk-only-connected" style="font-size:11px; color:#c9d1d9; cursor:pointer;">
+            Tylko prace posiadające relacje (ukryj samotne wierzchołki)
+          </label>
+        </div>
+        <div class="kg-note">
+          Deterministyczne losowanie podzbioru prac.<br>
+          <span class="dir">Filtr relacji:</span> Odrzuca artykuły niemające żadnych cytowań w obrębie wybranego zbioru.
+        </div>
+      </div>
+
+      <!-- PRESET TOPOLOGICZNY -->
+      <div class="kg-param">
+        <div class="kg-param-header">
+          <span class="name">Układ początkowy (Preset)</span>
+        </div>
+        <select class="kg-select" id="select-preset">
+          <option value="anchors">Domyślny atlas regionalny</option>
+          <option value="pure">Czysta fizyka (bez kotwic)</option>
+          <option value="cohesion">Spójność centroidów (bez kotwic)</option>
+          <option value="nebula">Mgławica rozszerzona (Paperscape)</option>
+          <option value="gravity">Grawitacja gigantów (Czarne dziury)</option>
+          <option value="tight">Zbity dysk</option>
+        </select>
+        <div class="kg-note">
+          Gotowe zestawy parametrów obrazujące różne zachowania sieci.
+        </div>
+      </div>
+
+      <!-- KONTROLA CZASU / KINETYKI + SEED LOSOWANIA POZYCJI -->
+      <div class="kg-param">
+        <div class="kg-param-header">
+          <span class="name">Kontrola układu</span>
+        </div>
+        <div class="kg-actions-strip">
+          <button class="kg-text-btn" id="btn-scramble">[ przemieszaj ]</button>
+          <button class="kg-text-btn" id="btn-reheat">[ podgrzej ]</button>
+          <button class="kg-text-btn" id="btn-pause">[ pauza ]</button>
+          <button class="kg-text-btn" id="btn-reset-view">[ wycentruj ]</button>
+          <button class="kg-text-btn" id="btn-grow">[ wzrost organiczny ]</button>
+        </div>
+        <div style="display:flex; align-items:baseline; gap:8px; margin-top:8px;">
+          <span style="font-size:11px; color:#8c92a0;">Ziarno kinetyki (Scramble Seed):</span>
+          <input type="number" class="kg-num-input" id="input-scramble-seed" value="42" style="width:75px; text-align:left;">
+        </div>
+        <div class="kg-note">
+          <strong>Seed</strong>: powtarzalny, deterministyczny start fizyki.<br>
+          <strong>Wzrost organiczny</strong>: buduje mapę sekwencyjnie od gigantów na zewnątrz.
+        </div>
+      </div>
+
+      <!-- SPEED (STEPS PER FRAME) -->
+      <div class="kg-param">
+        <div class="kg-param-header">
+          <span class="name">Kroki na klatkę (Frames)</span>
+        </div>
+        <div class="kg-param-controls">
+          <input type="range" class="kg-slider" id="p-speed" min="1" max="10" step="1" value="2">
+          <input type="number" class="kg-num-input" id="num-speed" min="1" max="10" step="1" value="2">
+        </div>
+        <div class="kg-note">
+          Liczba kroków całkowania fizyki w pojedynczej klatce ekranu.<br>
+          <span class="dir">&larr; Lewo:</span> Wolniejszy, miękki ruch; mniejsze obciążenie.<br>
+          <span class="dir">&rarr; Prawo:</span> Bardzo szybka zbieżność i ewolucja układu.
+        </div>
+      </div>
+
+      <!-- KOTWICE REGIONALNE -->
+      <div class="kg-param">
+        <div class="kg-param-header">
+          <span class="name">Kotwice regionalne (Anchor Stiffness)</span>
+        </div>
+        <div class="kg-param-controls">
+          <input type="range" class="kg-slider" id="p-anchor" min="0" max="1" step="0.01" value="1.0">
+          <input type="number" class="kg-num-input" id="num-anchor" min="0" max="1" step="0.01" value="1.0">
+        </div>
+        <div class="kg-note">
+          Siła ściągająca prace danej dziedziny do jej wyznaczonego bieguna/kontynentu.<br>
+          <span class="dir">&larr; Lewo:</span> Zero kotwic – czysta siatka cytowań (prace mogą wędrować swobodnie).<br>
+          <span class="dir">&rarr; Prawo:</span> Sztywne, wyraziste wyspy dyscyplin.
+        </div>
+      </div>
+
+      <!-- SPÓJNOŚĆ CENTROIDÓW DZIEDZINY -->
+      <div class="kg-param">
+        <div class="kg-param-header">
+          <span class="name">Spójność dziedziny (Subfield Cohesion)</span>
+        </div>
+        <div class="kg-param-controls">
+          <input type="range" class="kg-slider" id="p-cohesion" min="0" max="1" step="0.02" value="0.0">
+          <input type="number" class="kg-num-input" id="num-cohesion" min="0" max="1" step="0.02" value="0.0">
+        </div>
+        <div class="kg-note">
+          Wewnętrzne przyciąganie prac do <strong>ruchomego środka własnej dziedziny</strong> (bez z góry narzuconych pozycji).<br>
+          <span class="dir">&larr; Lewo:</span> 0.0 – wyłączone (pełna swoboda; prace mogą się rozrywać).<br>
+          <span class="dir">&rarr; Prawo:</span> 1.0 – rozbite połówki tego samego koloru sklejają się w jeden ląd.
+        </div>
+      </div>
+
+      <!-- PRZENIKANIE NA GORĄCO (GHOST ANNEALING) -->
+      <div class="kg-param">
+        <div class="kg-param-header">
+          <span class="name">Przenikanie na gorąco (Ghost Annealing)</span>
+        </div>
+        <div class="kg-param-controls">
+          <input type="range" class="kg-slider" id="p-ghost" min="0" max="1" step="0.05" value="0.0">
+          <input type="number" class="kg-num-input" id="num-ghost" min="0" max="1" step="0.05" value="0.0">
+        </div>
+        <div class="kg-note">
+          Miękkie zderzenia przy wysokiej temperaturze (pozwala pracom przepływać przez siebie na starcie zamiast klinować się).<br>
+          <span class="dir">&larr; Lewo:</span> 0.0 – twarde kolizje od początku (ryzyko zaklinowania w ciele stałym).<br>
+          <span class="dir">&rarr; Prawo:</span> 1.0 – kółka przenikają się jak ciecz na starcie, twardniejąc przy stygnięciu.
+        </div>
+      </div>
+
+      <!-- REPULSJA MGŁAWICY -->
+      <div class="kg-param">
+        <div class="kg-param-header">
+          <span class="name">Repulsja mgławicy (Nebula Repulsion)</span>
+        </div>
+        <div class="kg-param-controls">
+          <input type="range" class="kg-slider" id="p-nebula" min="0" max="3" step="0.05" value="0.0">
+          <input type="number" class="kg-num-input" id="num-nebula" min="0" max="3" step="0.05" value="0.0">
+        </div>
+        <div class="kg-note">
+          Długodystansowe odpychanie obcych dyscyplin od siebie (Coulomb).<br>
+          <span class="dir">&larr; Lewo:</span> Zbity dysk – dziedziny bezpośrednio stykają się ze sobą.<br>
+          <span class="dir">&rarr; Prawo:</span> Rozdmuchuje układ w ramiona galaktyki z pustą przestrzenią.
+        </div>
+      </div>
+
+      <!-- GRAWITACJA CENTRALNA -->
+      <div class="kg-param">
+        <div class="kg-param-header">
+          <span class="name">Grawitacja centralna (Center Gravity)</span>
+        </div>
+        <div class="kg-param-controls">
+          <input type="range" class="kg-slider" id="p-center" min="0" max="0.005" step="0.0001" value="0.0012">
+          <input type="number" class="kg-num-input" id="num-center" min="0" max="0.005" step="0.0001" value="0.0012">
+        </div>
+        <div class="kg-note">
+          Przyciąganie wszystkich kółek w stronę centrum (tylko widok 2D).<br>
+          <span class="dir">&larr; Lewo:</span> Luźna chmura swobodnie rozszerzająca się w nieskończoność.<br>
+          <span class="dir">&rarr; Prawo:</span> Ciasne zapadanie się całości w zbity dysk w centrum.
+        </div>
+      </div>
+
+      <!-- GRAWITACJA GIGANTÓW -->
+      <div class="kg-param">
+        <div class="kg-param-header">
+          <span class="name">Grawitacja gigantów (Giant Mass Pull)</span>
+        </div>
+        <div class="kg-param-controls">
+          <input type="range" class="kg-slider" id="p-giant" min="0" max="0.1" step="0.001" value="0.0">
+          <input type="number" class="kg-num-input" id="num-giant" min="0" max="0.1" step="0.001" value="0.0">
+        </div>
+        <div class="kg-note">
+          Czy monumentalne prace ściągają sąsiadów jak czarne dziury.<br>
+          <span class="dir">&larr; Lewo:</span> Brak dodatkowej grawitacji gigantów.<br>
+          <span class="dir">&rarr; Prawo:</span> Prace ciasno orbitują i oblepiają największe osiągnięcia.
+        </div>
+      </div>
+
+      <!-- SPRĘŻYSTOŚĆ CYTOWAŃ -->
+      <div class="kg-param">
+        <div class="kg-param-header">
+          <span class="name">Sztywność sprężyn (Citation Spring K)</span>
+        </div>
+        <div class="kg-param-controls">
+          <input type="range" class="kg-slider" id="p-spring" min="0.001" max="0.1" step="0.001" value="0.035">
+          <input type="number" class="kg-num-input" id="num-spring" min="0.001" max="0.1" step="0.001" value="0.035">
+        </div>
+        <div class="kg-note">
+          Stała Hooke'a łącząca prace, które bezpośrednio się cytują.<br>
+          <span class="dir">&larr; Lewo:</span> Wiotkie powiązania – prace swobodnie oddalają się od siebie.<br>
+          <span class="dir">&rarr; Prawo:</span> Sztywne wiązania – cytujące się prace mocno dociągają się do siebie.
+        </div>
+      </div>
+
+      <!-- MNOŻNIK MOSTÓW -->
+      <div class="kg-param">
+        <div class="kg-param-header">
+          <span class="name">Mnożnik mostów (Bridge Multiplier)</span>
+        </div>
+        <div class="kg-param-controls">
+          <input type="range" class="kg-slider" id="p-bridge" min="0" max="4" step="0.1" value="1.2">
+          <input type="number" class="kg-num-input" id="num-bridge" min="0" max="4" step="0.1" value="1.2">
+        </div>
+        <div class="kg-note">
+          Mnożnik naciągu sprężyn łączących prace z dwóch RÓŻNYCH dziedzin.<br>
+          <span class="dir">&larr; Lewo:</span> Mosty ignorowane – dziedziny odpychają się i izolują.<br>
+          <span class="dir">&rarr; Prawo:</span> Prace interdyscyplinarne zbliżają całe wielkie dyscypliny do siebie.
+        </div>
+      </div>
+
+      <!-- ODSTĘP SPRĘŻYN -->
+      <div class="kg-param">
+        <div class="kg-param-header">
+          <span class="name">Odstęp sprężyn (Spring Rest Gap)</span>
+        </div>
+        <div class="kg-param-controls">
+          <input type="range" class="kg-slider" id="p-gap" min="0" max="30" step="1" value="6">
+          <input type="number" class="kg-num-input" id="num-gap" min="0" max="30" step="1" value="6">
+        </div>
+        <div class="kg-note">
+          Domyślny luz (w pikselach) między brzegami połączonych kółek.<br>
+          <span class="dir">&larr; Lewo:</span> Sprężyny dociągają kółka krawędź w krawędź.<br>
+          <span class="dir">&rarr; Prawo:</span> Zachowuje przewiewne korytarze i oddech wokół prac.
+        </div>
+      </div>
+
+      <!-- ROZMIAR BAZOWY KÓŁEK -->
+      <div class="kg-param">
+        <div class="kg-param-header">
+          <span class="name">Mnożnik rozmiaru kółek (Scale)</span>
+        </div>
+        <div class="kg-param-controls">
+          <input type="range" class="kg-slider" id="p-scale" min="0.2" max="2.0" step="0.05" value="0.75">
+          <input type="number" class="kg-num-input" id="num-scale" min="0.2" max="2.0" step="0.05" value="0.75">
+        </div>
+        <div class="kg-note">
+          Globalne pomniejszanie lub powiększanie wszystkich kółek.<br>
+          <span class="dir">&larr; Lewo:</span> Drobne kropki, olbrzymia wolna przestrzeń i przewiew.<br>
+          <span class="dir">&rarr; Prawo:</span> Duże, monumentalne dyski.
+        </div>
+      </div>
+
+      <!-- SKALOWANIE PROMIENI -->
+      <div class="kg-param">
+        <div class="kg-param-header">
+          <span class="name">Skalowanie promieni (Stevens Exponent)</span>
+        </div>
+        <div class="kg-param-controls">
+          <input type="range" class="kg-slider" id="p-gamma" min="0.20" max="0.50" step="0.01" value="0.36">
+          <input type="number" class="kg-num-input" id="num-gamma" min="0.20" max="0.50" step="0.01" value="0.36">
+        </div>
+        <div class="kg-note">
+          Potęga prawa Stevensa (Promień &prop; cytowania<sup>&gamma;</sup>).<br>
+          <span class="dir">&larr; Lewo:</span> Równość rozmiarów.<br>
+          <span class="dir">&rarr; Prawo:</span> Giganci rosną do kolosalnych rozmiarów dominujących mapę.
+        </div>
+      </div>
+
+      <!-- BEZWŁADNOŚĆ MAS -->
+      <div class="kg-param">
+        <div class="kg-param-header">
+          <span class="name">Bezwładność mas (Mass Exponent)</span>
+        </div>
+        <div class="kg-param-controls">
+          <input type="range" class="kg-slider" id="p-mass" min="0.5" max="2.5" step="0.1" value="1.8">
+          <input type="number" class="kg-num-input" id="num-mass" min="0.5" max="2.5" step="0.1" value="1.8">
+        </div>
+        <div class="kg-note">
+          Jak masa rośnie z promieniem kółka w fizyce kolizji (Masa &prop; R<sup>&beta;</sup>).<br>
+          <span class="dir">&larr; Lewo:</span> Równe masy – drobna praca może przepchnąć giganta.<br>
+          <span class="dir">&rarr; Prawo:</span> Giganci są niewzruszoną opoką, małe prace ustępują im z drogi.
+        </div>
+      </div>
+
+      <!-- MARGINES KOLIZJI -->
+      <div class="kg-param">
+        <div class="kg-param-header">
+          <span class="name">Margines kolizji (Collision Margin)</span>
+        </div>
+        <div class="kg-param-controls">
+          <input type="range" class="kg-slider" id="p-margin" min="0.5" max="10.0" step="0.5" value="2.0">
+          <input type="number" class="kg-num-input" id="num-margin" min="0.5" max="10.0" step="0.5" value="2.0">
+        </div>
+        <div class="kg-note">
+          Minimalny geometryczny bufor ochronny zapobiegający nakładaniu się kółek.<br>
+          <span class="dir">&larr; Lewo:</span> Ciasny styk krawędź w krawędź.<br>
+          <span class="dir">&rarr; Prawo:</span> Wyraźny luz i odstęp między obrysami.
+        </div>
+      </div>
+
+      <!-- PRZEŁĄCZNIKI WIDOKU -->
+      <div class="kg-toggle-row">
+        <span class="label">Pokaż pełną sieć cytowań</span>
+        <input type="checkbox" class="kg-check" id="chk-all-lines">
+      </div>
+
+      <div class="kg-toggle-row">
+        <span class="label">Pokaż tła dziedzin</span>
+        <input type="checkbox" class="kg-check" id="chk-zones" checked>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- INSPEKTOR DANYCH PRACY (LEWY BOK) -->
+  <div class="inspector-drawer" id="inspector">
+    <div class="ins-header">
+      <span>Praca naukowa</span>
+      <button class="drawer-close" id="ins-close">[ zamknij ]</button>
+    </div>
+
+    <div class="ins-title" id="ins-title">Tytuł pracy</div>
+
+    <div class="ins-meta">
+      <span>Cytowania: <strong id="ins-cites">0</strong></span>
+      <span>Rok wydania: <span id="ins-year">----</span></span>
+      <span>Dziedzina: <span id="ins-subfield" style="color:#58a6ff;">Nauka</span></span>
+    </div>
+
+    <div>
+      <div class="ins-links-label">
+        Powiązane prace (<span id="ins-conn-count">0</span>):
+      </div>
+      <div class="ins-conn-list" id="ins-connections"></div>
+    </div>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('atlas-canvas');
+    const ctx = canvas.getContext('2d');
+    const tooltip = document.getElementById('tooltip');
+    const inspector = document.getElementById('inspector');
+    const sidebar = document.getElementById('sidebar');
+
+    const statusDot = document.getElementById('status-dot');
+    const statusText = document.getElementById('status-text');
+    const nodeCountEl = document.getElementById('node-count');
+    const btnViewToggle = document.getElementById('btn-view-toggle');
+    const btnToggleOptions = document.getElementById('btn-toggle-options');
+    const btnCloseSidebar = document.getElementById('btn-close-sidebar');
+
+    // TRYB WIDOKU: '2D' LUB 'GLOBE'
+    let viewMode = 'GLOBE';
+    let globeRotation = { x: 0.35, y: -0.2 };
+    let globeRadius = 660; // Powiekszony majestatyczny glob (660px) dla olbrzymiej wolnej przestrzeni
+
+    let fullRawData = null;
+    let allAvailableNodes = [];
+    let allAvailableEdges = [];
+    let zones = [];
+
+    // AKTYWNY PODZBÓR
+    let nodes = [];
+    let edges = [];
+    let nodeMap = new Map();
+
+    let hoveredNode = null;
+    let selectedNode = null;
+    let draggedNode = null;
+
+    // DETERMINISTYCZNY PRNG (MULBERRY32)
+    function mulberry32(a) {
+      return function() {
+        var t = a += 0x6D2B79F5;
+        t = Math.imul(t ^ t >>> 15, t | 1);
+        t ^= t + Math.imul(t ^ t >>> 7, t | 61);
+        return ((t ^ t >>> 14) >>> 0) / 4294967296;
+      };
+    }
+
+    // PARAMETRY FIZYCZNE
+    const params = {
+      dataset: 'global',
+      sampleCount: 1000,
+      datasetSeed: 1337,
+      onlyConnected: false,
+      scrambleSeed: 42,
+      simSpeed: 2,
+      radiusScale: 0.75,
+      anchorStrength: 0.35,
+      subfieldCohesion: 0.0,
+      ghostAnnealing: 0.1,
+      nebulaRepulsion: 0.0,
+      centerGravity: 0.0012,
+      giantGravity: 0.0,
+      springStiffness: 0.035,
+      bridgeMult: 2.0,
+      springGap: 6.0,
+      sizeExponent: 0.36,
+      massExponent: 1.8,
+      collisionMargin: 2.0,
+      showAllLines: false,
+      showZones: true
+    };
+
+    let temperature = 1.0;
+    let isSimRunning = true;
+    let isPaused = false;
+
+    // MACIERZ KAMERY
+    let camera = {
+      x: 0,
+      y: 0,
+      scale: 0.75,
+      targetX: 0,
+      targetY: 0,
+      targetScale: 0.75
+    };
+
+    let isPanning = false;
+    let dragStartX = 0;
+    let dragStartY = 0;
+    let lastMouseX = 0;
+    let lastMouseY = 0;
+
+    init();
+
+    async function init() {
+      resizeCanvas();
+      window.addEventListener('resize', resizeCanvas);
+
+      await loadDataset(params.dataset);
+
+      setupEventListeners();
+      setupSidebarBindings();
+      syncInputsWithParams();
+      updateViewToggleBtn();
+
+      requestAnimationFrame(mainLoop);
+    }
+
+    async function loadDataset(datasetName) {
+      const file = (datasetName === 'math') ? 'live_data.json' : 'global_data.json';
+      const resp = await fetch(file);
+      fullRawData = await resp.json();
+
+      zones = fullRawData.zones;
+      allAvailableNodes = fullRawData.nodes;
+      allAvailableEdges = fullRawData.edges;
+
+      rebuildActiveSubset();
+      resetCameraView();
+    }
+
+    function rebuildActiveSubset() {
+      const rng = mulberry32(params.datasetSeed);
+
+      // Pula wyjściowa: jeśli włączony filtr tylko połączonych prac, bierzemy tylko te z krawędziami
+      let candidatePool = allAvailableNodes;
+      if (params.onlyConnected) {
+        candidatePool = allAvailableNodes.filter(n => n.connections && n.connections.length > 0);
+      }
+
+      const targetCount = Math.min(params.sampleCount, candidatePool.length);
+
+      // Tasowanie deterministyczne z zachowaniem reprezentacji
+      const shuffled = [...candidatePool];
+      for (let i = shuffled.length - 1; i > 0; i--) {
+        const j = Math.floor(rng() * (i + 1));
+        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+      }
+
+      let activeList = shuffled.slice(0, targetCount);
+
+      if (params.onlyConnected) {
+        // Weryfikujemy aktywne krawędzie w podzbiorze
+        let subIds = new Set(activeList.map(n => n.id));
+        let connectedSubIds = new Set();
+        for (let i = 0; i < allAvailableEdges.length; i++) {
+          const e = allAvailableEdges[i];
+          if (subIds.has(e.source) && subIds.has(e.target)) {
+            connectedSubIds.add(e.source);
+            connectedSubIds.add(e.target);
+          }
+        }
+
+        // Dobieramy kolejne połączone prace z pozostałej części puli, aby dobić do zadanej liczby prac
+        if (connectedSubIds.size < targetCount && shuffled.length > targetCount) {
+          for (let i = targetCount; i < shuffled.length && connectedSubIds.size < targetCount; i++) {
+            const cand = shuffled[i];
+            if (cand.connections && cand.connections.some(id => subIds.has(id))) {
+              subIds.add(cand.id);
+              activeList.push(cand);
+              for (let k = 0; k < cand.connections.length; k++) {
+                const cid = cand.connections[k];
+                if (subIds.has(cid)) {
+                  connectedSubIds.add(cand.id);
+                  connectedSubIds.add(cid);
+                }
+              }
+            }
+          }
+        }
+
+        // Pozostawiamy wyłącznie prace z aktywnymi powiązaniami w wybranym podzbiorze
+        activeList = activeList.filter(n => connectedSubIds.has(n.id));
+      }
+
+      nodeMap.clear();
+
+      nodes = activeList.map(n => {
+        const node = {
+          ...n,
+          x: (n.initX !== undefined && Math.abs(n.initX) < 1000) ? n.initX : (rng() - 0.5) * 300,
+          y: (n.initY !== undefined && Math.abs(n.initY) < 1000) ? n.initY : (rng() - 0.5) * 300,
+          vx: 0,
+          vy: 0,
+          // Sferyczne 3D unit wektory i prędkości
+          sx: n.sx || (Math.random() - 0.5) * 2,
+          sy: n.sy || (Math.random() - 0.5) * 2,
+          sz: n.sz || (Math.random() - 0.5) * 2,
+          svx: 0,
+          svy: 0,
+          svz: 0
+        };
+        const len = Math.hypot(node.sx, node.sy, node.sz) || 1;
+        node.sx /= len;
+        node.sy /= len;
+        node.sz /= len;
+
+        nodeMap.set(node.id, node);
+        return node;
+      });
+
+      // Filtruj krawędzie dla aktywnego podzbioru
+      edges = allAvailableEdges.map(e => ({
+        source: nodeMap.get(e.source),
+        target: nodeMap.get(e.target),
+        weight: e.weight
+      })).filter(e => e.source && e.target);
+
+      nodeCountEl.innerText = `${nodes.length.toLocaleString()} prac`;
+      recalcRadii();
+      reheatKinetics();
+    }
+
+    function updateViewToggleBtn() {
+      if (viewMode === 'GLOBE') {
+        btnViewToggle.innerText = '[ Widok: Glob 3D | Przełącz na 2D ]';
+      } else {
+        btnViewToggle.innerText = '[ Widok: Płaski 2D | Przełącz na Glob 3D ]';
+      }
+    }
+
+    function resizeCanvas() {
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      canvas.width = window.innerWidth * dpr;
+      canvas.height = window.innerHeight * dpr;
+      ctx.scale(dpr, dpr);
+    }
+
+    function resetCameraView() {
+      camera.targetX = window.innerWidth / 2;
+      camera.targetY = window.innerHeight / 2;
+      const minDim = Math.min(window.innerWidth, window.innerHeight);
+      camera.targetScale = (viewMode === 'GLOBE') ? (minDim / 1420) : (minDim / 1850);
+      camera.x = camera.targetX;
+      camera.y = camera.targetY;
+      camera.scale = camera.targetScale;
+    }
+
+    function recalcRadii() {
+      const isGlobe = (viewMode === 'GLOBE');
+      const uScale = (params.radiusScale !== undefined) ? params.radiusScale : 1.0;
+      nodes.forEach(n => {
+        // Na globie kółka są mniejsze, dając 85-90% wolnej przestrzeni (oceany miedzy kontynentami)
+        const baseMin = (isGlobe ? 2.2 : 4.0) * uScale;
+        const maxCap = (isGlobe ? 26.0 : 65.0) * uScale;
+        const mult = (isGlobe ? 0.36 : 0.85) * uScale;
+        const r = baseMin + mult * Math.pow(n.citations, params.sizeExponent);
+        n.r = Math.max(baseMin, Math.min(maxCap, r));
+        n.mass = Math.pow(n.r, params.massExponent) + 1.0;
+      });
+    }
+
+    function reheatKinetics() {
+      temperature = 1.0;
+      isSimRunning = true;
+      statusDot.className = 'status-dot';
+      statusText.innerText = 'Aktywna';
+    }
+
+    /* PROJEKCJA SFERYCZNA 3D -> EKRAN 2D */
+    function projectSphere(sx, sy, sz) {
+      const cosY = Math.cos(globeRotation.y), sinY = Math.sin(globeRotation.y);
+      const x1 = sx * cosY - sz * sinY;
+      const z1 = sx * sinY + sz * cosY;
+
+      const cosX = Math.cos(globeRotation.x), sinX = Math.sin(globeRotation.x);
+      const y2 = sy * cosX - z1 * sinX;
+      const z2 = sy * sinX + z1 * cosX;
+
+      const r = globeRadius * camera.scale;
+      return {
+        x: camera.x + x1 * r,
+        y: camera.y - y2 * r,
+        depth: z2,
+        rPx: r
+      };
+    }
+
+    /* KROK FIZYKI PBD: WSPÓLNY DLA 2D I GLOBU 3D */
+    function updatePhysicsStep() {
+      if (isPaused) return;
+
+      if (temperature < 0.004) {
+        if (isSimRunning) {
+          isSimRunning = false;
+          statusDot.className = 'status-dot frozen';
+          statusText.innerText = 'Ustablizowana';
+        }
+        return;
+      }
+
+      const curTemp = temperature;
+
+      if (viewMode === 'GLOBE') {
+        updatePhysicsGlobe(curTemp);
+      } else {
+        updatePhysics2D(curTemp);
+      }
+
+      temperature *= 0.994;
+    }
+
+    /* FIZYKA SFERYCZNA NA POWIERZCHNI GLOBU (STABILNA DYNAMIKA RIEMANNA) */
+    function updatePhysicsGlobe(curTemp) {
+      const rGlobe = globeRadius;
+
+      // 1. Kotwice i spójność sferyczna
+      for (let i = 0; i < nodes.length; i++) {
+        const n = nodes[i];
+        if (n === draggedNode) continue;
+
+        const zone = zones.find(z => z.id === (n.field_id || n.subfield_id));
+        // Kotwica używa indywidualnej koordynaty n.anchor_sx jeśli jest, unikając kompresji w 1 punkt!
+        const targetSx = (n.anchor_sx !== undefined) ? n.anchor_sx : (zone ? zone.sx : undefined);
+        const targetSy = (n.anchor_sy !== undefined) ? n.anchor_sy : (zone ? zone.sy : undefined);
+        const targetSz = (n.anchor_sz !== undefined) ? n.anchor_sz : (zone ? zone.sz : undefined);
+
+        if (targetSx !== undefined && params.anchorStrength > 0) {
+          const kAnchor = 0.0035 * params.anchorStrength * curTemp;
+          n.svx += (targetSx - n.sx) * kAnchor;
+          n.svy += (targetSy - n.sy) * kAnchor;
+          n.svz += (targetSz - n.sz) * kAnchor;
+        }
+
+        if (zone && zone.sx !== undefined && params.subfieldCohesion > 0) {
+          const kCoh = 0.0025 * params.subfieldCohesion * curTemp;
+          n.svx += (zone.sx - n.sx) * kCoh;
+          n.svy += (zone.sy - n.sy) * kCoh;
+          n.svz += (zone.sz - n.sz) * kCoh;
+        }
+      }
+
+      // 2. Sprężyny cytowań na kuli (dystans geodezyjny / cięciwowy)
+      for (let i = 0; i < edges.length; i++) {
+        const e = edges[i];
+        const u = e.source;
+        const v = e.target;
+
+        const dx = v.sx - u.sx;
+        const dy = v.sy - u.sy;
+        const dz = v.sz - u.sz;
+        const chordSq = dx * dx + dy * dy + dz * dz;
+        const chordDist = Math.sqrt(Math.max(chordSq, 1e-6));
+
+        const angDist = 2 * Math.asin(Math.min(1.0, chordDist / 2));
+        const targetAng = (u.r + v.r + params.springGap) / rGlobe;
+
+        if (angDist > targetAng) {
+          const stretch = angDist - targetAng;
+          const fidU = u.field_id || u.subfield_id;
+          const fidV = v.field_id || v.subfield_id;
+          const isCross = (fidU !== fidV);
+          const w = isCross ? (e.weight * params.bridgeMult) : e.weight;
+          const force = stretch * params.springStiffness * w * curTemp * 0.35;
+
+          const invU = 1 / (u.mass * 0.1 + 1);
+          const invV = 1 / (v.mass * 0.1 + 1);
+
+          const nx = dx / chordDist;
+          const ny = dy / chordDist;
+          const nz = dz / chordDist;
+
+          if (u !== draggedNode) {
+            u.svx += nx * force * invU;
+            u.svy += ny * force * invU;
+            u.svz += nz * force * invU;
+          }
+          if (v !== draggedNode) {
+            v.svx -= nx * force * invV;
+            v.svy -= ny * force * invV;
+            v.svz -= nz * force * invV;
+          }
+        }
+      }
+
+      // 3. Całkowanie prędkości stycznej z silnym tłumieniem
+      for (let i = 0; i < nodes.length; i++) {
+        const n = nodes[i];
+        if (n === draggedNode) continue;
+
+        // Usunięcie składowej normalnej (prędkość wyłącznie styczna do sfery)
+        const vDotN = n.svx * n.sx + n.svy * n.sy + n.svz * n.sz;
+        n.svx -= n.sx * vDotN;
+        n.svy -= n.sy * vDotN;
+        n.svz -= n.sz * vDotN;
+
+        // Ograniczenie maksymalnej prędkości kątowej na krok
+        const spd = Math.hypot(n.svx, n.svy, n.svz);
+        if (spd > 0.02) {
+          n.svx = (n.svx / spd) * 0.02;
+          n.svy = (n.svy / spd) * 0.02;
+          n.svz = (n.svz / spd) * 0.02;
+        }
+
+        n.sx += n.svx;
+        n.sy += n.svy;
+        n.sz += n.svz;
+
+        // Tłumienie pędu (gwarantuje stabilne zastyganie w kryształ)
+        n.svx *= 0.82;
+        n.svy *= 0.82;
+        n.svz *= 0.82;
+
+        // Normalizacja pozycji na powierzchnię sfery (R=1)
+        const len = Math.hypot(n.sx, n.sy, n.sz) || 1.0;
+        n.sx /= len;
+        n.sy /= len;
+        n.sz /= len;
+      }
+
+      // 4. Bezkolizyjna projekcja PBD na sferze
+      const minMargin = params.collisionMargin;
+      let collisionHardness = 1.0;
+      if (params.ghostAnnealing > 0) {
+        collisionHardness = 1.0 - Math.min(0.9, params.ghostAnnealing * (curTemp / 1.0));
+      }
+
+      for (let pass = 0; pass < 2; pass++) {
+        for (let i = 0; i < nodes.length; i++) {
+          const a = nodes[i];
+          for (let j = i + 1; j < nodes.length; j++) {
+            const b = nodes[j];
+
+            const dx = b.sx - a.sx;
+            const dy = b.sy - a.sy;
+            const dz = b.sz - a.sz;
+            const chordSq = dx * dx + dy * dy + dz * dz;
+
+            const minAng = (a.r + b.r + minMargin) / rGlobe;
+            const minChord = 2 * Math.sin(minAng / 2);
+
+            if (chordSq < minChord * minChord) {
+              const chordDist = Math.sqrt(Math.max(chordSq, 1e-6));
+              const overlap = minChord - chordDist;
+
+              const nx = dx / chordDist;
+              const ny = dy / chordDist;
+              const nz = dz / chordDist;
+
+              const invA = 1 / a.mass;
+              const invB = 1 / b.mass;
+              const totalInv = invA + invB;
+              const shift = overlap * 0.35 * collisionHardness;
+
+              if (a !== draggedNode) {
+                a.sx -= nx * shift * (invA / totalInv);
+                a.sy -= ny * shift * (invA / totalInv);
+                a.sz -= nz * shift * (invA / totalInv);
+              }
+              if (b !== draggedNode) {
+                b.sx += nx * shift * (invB / totalInv);
+                b.sy += ny * shift * (invB / totalInv);
+                b.sz += nz * shift * (invB / totalInv);
+              }
+            }
+          }
+        }
+
+        // Re-projekcja po pasie kolizji
+        for (let i = 0; i < nodes.length; i++) {
+          const n = nodes[i];
+          const len = Math.hypot(n.sx, n.sy, n.sz) || 1.0;
+          n.sx /= len;
+          n.sy /= len;
+          n.sz /= len;
+        }
+      }
+    }
+
+    /* FIZYKA PŁASKA 2D */
+    function updatePhysics2D(curTemp) {
+      // 1. Kotwice i grawitacja centralna
+      for (let i = 0; i < nodes.length; i++) {
+        const n = nodes[i];
+        if (n === draggedNode) continue;
+
+        if (params.anchorStrength > 0) {
+          n.vx += (n.anchorX - n.x) * (0.016 * params.anchorStrength * curTemp);
+          n.vy += (n.anchorY - n.y) * (0.016 * params.anchorStrength * curTemp);
+        } else {
+          n.vx -= n.x * (params.centerGravity * curTemp);
+          n.vy -= n.y * (params.centerGravity * curTemp);
+        }
+
+        if (params.subfieldCohesion > 0) {
+          const zone = zones.find(z => z.id === (n.field_id || n.subfield_id));
+          if (zone) {
+            n.vx += (zone.cx - n.x) * (params.subfieldCohesion * 0.018 * curTemp);
+            n.vy += (zone.cy - n.y) * (params.subfieldCohesion * 0.018 * curTemp);
+          }
+        }
+      }
+
+      // 2. Repulsja mgławicy
+      if (params.nebulaRepulsion > 0) {
+        for (let i = 0; i < nodes.length; i += 2) {
+          const a = nodes[i];
+          for (let j = i + 1; j < nodes.length; j += 2) {
+            const b = nodes[j];
+            const fidA = a.field_id || a.subfield_id;
+            const fidB = b.field_id || b.subfield_id;
+            if (fidA !== fidB) {
+              const dx = b.x - a.x;
+              const dy = b.y - a.y;
+              const distSq = dx * dx + dy * dy;
+              if (distSq < 90000 && distSq > 100) {
+                const dist = Math.sqrt(distSq);
+                const push = (params.nebulaRepulsion * 60.0 / (dist + 20)) * curTemp;
+                const nx = dx / dist;
+                const ny = dy / dist;
+                if (a !== draggedNode) { a.vx -= nx * push; a.vy -= ny * push; }
+                if (b !== draggedNode) { b.vx += nx * push; b.vy += ny * push; }
+              }
+            }
+          }
+        }
+      }
+
+      // 3. Sprężyny cytowań
+      for (let i = 0; i < edges.length; i++) {
+        const e = edges[i];
+        const u = e.source;
+        const v = e.target;
+        const dx = v.x - u.x;
+        const dy = v.y - u.y;
+        const dist = Math.hypot(dx, dy) + 1e-4;
+        const targetDist = u.r + v.r + params.springGap;
+
+        if (dist > targetDist) {
+          const stretch = dist - targetDist;
+          const fidU = u.field_id || u.subfield_id;
+          const fidV = v.field_id || v.subfield_id;
+          const isCross = (fidU !== fidV);
+          const w = isCross ? (e.weight * params.bridgeMult) : e.weight;
+          const force = stretch * params.springStiffness * w * curTemp;
+          const fx = (dx / dist) * force;
+          const fy = (dy / dist) * force;
+
+          if (u !== draggedNode) { u.vx += fx / (u.mass * 0.1 + 1); u.vy += fy / (u.mass * 0.1 + 1); }
+          if (v !== draggedNode) { v.vx -= fx / (v.mass * 0.1 + 1); v.vy -= fy / (v.mass * 0.1 + 1); }
+        }
+      }
+
+      // 4. Całkowanie Eulera
+      for (let i = 0; i < nodes.length; i++) {
+        const n = nodes[i];
+        if (n === draggedNode) continue;
+        n.x += n.vx;
+        n.y += n.vy;
+        n.vx *= 0.86;
+        n.vy *= 0.86;
+      }
+
+      // 5. PBD kolizje
+      const minMargin = params.collisionMargin;
+      let collisionHardness = 1.0;
+      if (params.ghostAnnealing > 0) {
+        collisionHardness = 1.0 - Math.min(0.9, params.ghostAnnealing * (curTemp / 1.0));
+      }
+
+      for (let pass = 0; pass < 2; pass++) {
+        for (let i = 0; i < nodes.length; i++) {
+          const a = nodes[i];
+          for (let j = i + 1; j < nodes.length; j++) {
+            const b = nodes[j];
+            const dx = b.x - a.x;
+            const dy = b.y - a.y;
+            const minDist = a.r + b.r + minMargin;
+
+            if (Math.abs(dx) < minDist && Math.abs(dy) < minDist) {
+              const distSq = dx * dx + dy * dy;
+              if (distSq < minDist * minDist) {
+                const dist = Math.sqrt(Math.max(distSq, 1e-4));
+                const overlap = minDist - dist;
+                const nx = dx / dist;
+                const ny = dy / dist;
+
+                const invA = 1 / a.mass;
+                const invB = 1 / b.mass;
+                const totalInv = invA + invB;
+                const pbd = overlap * collisionHardness * 0.65;
+
+                if (a !== draggedNode) {
+                  a.x -= nx * pbd * (invA / totalInv);
+                  a.y -= ny * pbd * (invA / totalInv);
+                }
+                if (b !== draggedNode) {
+                  b.x += nx * pbd * (invB / totalInv);
+                  b.y += ny * pbd * (invB / totalInv);
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // KINETYCZNY SCRAMBLE POZYCJI (Z AUTOMATYCZNYM NOWYM SEEDEM LUB POWTÓRZALNYM)
+    function scrambleConfetti(rollNewSeed = true) {
+      const seedInput = document.getElementById('input-scramble-seed');
+      let seedVal = parseInt(seedInput.value) || 42;
+      if (rollNewSeed) {
+        seedVal = Math.floor(Math.random() * 899999) + 100000;
+        seedInput.value = seedVal;
+        params.scrambleSeed = seedVal;
+      }
+      const rng = mulberry32(seedVal);
+
+      if (viewMode === 'GLOBE') {
+        nodes.forEach(n => {
+          // Równomierne losowanie sferyczne (metoda Marsaglii)
+          const u = rng() * 2 - 1;
+          const theta = rng() * Math.PI * 2;
+          const r = Math.sqrt(Math.max(0, 1 - u * u));
+          n.sx = r * Math.cos(theta);
+          n.sy = u;
+          n.sz = r * Math.sin(theta);
+          n.svx = 0;
+          n.svy = 0;
+          n.svz = 0;
+        });
+      } else {
+        nodes.forEach(n => {
+          const a = rng() * Math.PI * 2;
+          const d = Math.sqrt(rng()) * 220;
+          n.x = Math.cos(a) * d;
+          n.y = Math.sin(a) * d;
+          n.vx = (rng() - 0.5) * 6;
+          n.vy = (rng() - 0.5) * 6;
+        });
+      }
+      reheatKinetics();
+    }
+
+    function growOrganically() {
+      const seedVal = parseInt(document.getElementById('input-scramble-seed').value) || 42;
+      const rng = mulberry32(seedVal);
+      const sorted = [...nodes].sort((a, b) => b.citations - a.citations);
+      const topCount = Math.min(25, sorted.length);
+
+      sorted.forEach((n, idx) => {
+        if (idx < topCount) {
+          const a = (idx / topCount) * Math.PI * 2;
+          const r = 40 + rng() * 100;
+          n.x = Math.cos(a) * r;
+          n.y = Math.sin(a) * r;
+        } else {
+          n.x = 99999;
+          n.y = 99999;
+        }
+        n.vx = 0; n.vy = 0;
+      });
+
+      let curIdx = topCount;
+      const interval = setInterval(() => {
+        if (curIdx >= sorted.length) {
+          clearInterval(interval);
+          return;
+        }
+        const batch = Math.min(30, sorted.length - curIdx);
+        for (let b = 0; b < batch; b++) {
+          const n = sorted[curIdx++];
+          const parentId = n.connections.find(id => {
+            const p = nodeMap.get(id);
+            return p && p.x < 90000;
+          });
+          const parent = parentId ? nodeMap.get(parentId) : null;
+          if (parent) {
+            const ang = rng() * Math.PI * 2;
+            const dist = parent.r + n.r + 4;
+            n.x = parent.x + Math.cos(ang) * dist;
+            n.y = parent.y + Math.sin(ang) * dist;
+          } else {
+            const ang = rng() * Math.PI * 2;
+            const dist = 180 + rng() * 120;
+            n.x = Math.cos(ang) * dist;
+            n.y = Math.sin(ang) * dist;
+          }
+        }
+        reheatKinetics();
+      }, 50);
+
+      reheatKinetics();
+    }
+
+    /* SYNCHRONIZACJA KONTROLEK */
+    function setupSidebarBindings() {
+      btnToggleOptions.addEventListener('click', () => {
+        sidebar.classList.toggle('open');
+      });
+      btnCloseSidebar.addEventListener('click', () => {
+        sidebar.classList.remove('open');
+      });
+
+      btnViewToggle.addEventListener('click', () => {
+        viewMode = (viewMode === 'GLOBE') ? '2D' : 'GLOBE';
+        updateViewToggleBtn();
+        recalcRadii();
+        resetCameraView();
+        reheatKinetics();
+      });
+
+      // ZMIANA ZBIORU DANYCH
+      document.getElementById('select-dataset').addEventListener('change', async (e) => {
+        params.dataset = e.target.value;
+        await loadDataset(params.dataset);
+      });
+
+      // SAMPLING PRAC
+      const sampleSlider = document.getElementById('p-sample-count');
+      const sampleNum = document.getElementById('num-sample-count');
+      const updateSample = (val) => {
+        params.sampleCount = parseInt(val);
+        sampleSlider.value = params.sampleCount;
+        sampleNum.value = params.sampleCount;
+        rebuildActiveSubset();
+      };
+      sampleSlider.addEventListener('input', (e) => updateSample(e.target.value));
+      sampleNum.addEventListener('change', (e) => updateSample(e.target.value));
+
+      document.getElementById('input-dataset-seed').addEventListener('change', (e) => {
+        params.datasetSeed = parseInt(e.target.value) || 1337;
+        rebuildActiveSubset();
+      });
+
+      const chkOnlyConnected = document.getElementById('chk-only-connected');
+      chkOnlyConnected.addEventListener('change', (e) => {
+        params.onlyConnected = e.target.checked;
+        rebuildActiveSubset();
+      });
+
+      const bindPair = (sliderId, numId, paramKey, isInteger = false) => {
+        const slider = document.getElementById(sliderId);
+        const numInput = document.getElementById(numId);
+
+        slider.addEventListener('input', (e) => {
+          const val = isInteger ? parseInt(e.target.value) : parseFloat(e.target.value);
+          numInput.value = val;
+          params[paramKey] = val;
+          if (paramKey === 'sizeExponent' || paramKey === 'massExponent' || paramKey === 'radiusScale') recalcRadii();
+          reheatKinetics();
+        });
+
+        numInput.addEventListener('change', (e) => {
+          let val = isInteger ? parseInt(e.target.value) : parseFloat(e.target.value);
+          const min = parseFloat(slider.min);
+          const max = parseFloat(slider.max);
+          if (isNaN(val)) val = params[paramKey];
+          val = Math.max(min, Math.min(max, val));
+          numInput.value = val;
+          slider.value = val;
+          params[paramKey] = val;
+          if (paramKey === 'sizeExponent' || paramKey === 'massExponent' || paramKey === 'radiusScale') recalcRadii();
+          reheatKinetics();
+        });
+      };
+
+      bindPair('p-speed', 'num-speed', 'simSpeed', true);
+      bindPair('p-scale', 'num-scale', 'radiusScale');
+      bindPair('p-anchor', 'num-anchor', 'anchorStrength');
+      bindPair('p-cohesion', 'num-cohesion', 'subfieldCohesion');
+      bindPair('p-ghost', 'num-ghost', 'ghostAnnealing');
+      bindPair('p-nebula', 'num-nebula', 'nebulaRepulsion');
+      bindPair('p-center', 'num-center', 'centerGravity');
+      bindPair('p-giant', 'num-giant', 'giantGravity');
+      bindPair('p-spring', 'num-spring', 'springStiffness');
+      bindPair('p-bridge', 'num-bridge', 'bridgeMult');
+      bindPair('p-gap', 'num-gap', 'springGap');
+      bindPair('p-gamma', 'num-gamma', 'sizeExponent');
+      bindPair('p-mass', 'num-mass', 'massExponent');
+      bindPair('p-margin', 'num-margin', 'collisionMargin');
+
+      document.getElementById('chk-all-lines').addEventListener('change', (e) => {
+        params.showAllLines = e.target.checked;
+      });
+      document.getElementById('chk-zones').addEventListener('change', (e) => {
+        params.showZones = e.target.checked;
+      });
+
+      document.getElementById('btn-scramble').addEventListener('click', () => scrambleConfetti(true));
+      const inputScramble = document.getElementById('input-scramble-seed');
+      if (inputScramble) {
+        inputScramble.addEventListener('change', (e) => {
+          params.scrambleSeed = parseInt(e.target.value) || 42;
+          scrambleConfetti(false);
+        });
+      }
+      document.getElementById('btn-grow').addEventListener('click', growOrganically);
+      document.getElementById('btn-reheat').addEventListener('click', reheatKinetics);
+
+      const btnPause = document.getElementById('btn-pause');
+      btnPause.addEventListener('click', () => {
+        isPaused = !isPaused;
+        btnPause.innerText = isPaused ? '[ wznów ]' : '[ pauza ]';
+        btnPause.classList.toggle('active', isPaused);
+      });
+
+      document.getElementById('btn-reset-view').addEventListener('click', resetCameraView);
+
+      // PRESETY
+      const selectPreset = document.getElementById('select-preset');
+      selectPreset.addEventListener('change', (e) => {
+        const val = e.target.value;
+        if (val === 'anchors') {
+          params.anchorStrength = 1.0;
+          params.subfieldCohesion = 0.0;
+          params.ghostAnnealing = 0.0;
+          params.nebulaRepulsion = 0.0;
+          params.centerGravity = 0.0012;
+        } else if (val === 'pure') {
+          params.anchorStrength = 0.0;
+          params.subfieldCohesion = 0.0;
+          params.ghostAnnealing = 0.0;
+          params.nebulaRepulsion = 0.0;
+          params.centerGravity = 0.0008;
+        } else if (val === 'cohesion') {
+          params.anchorStrength = 0.0;
+          params.subfieldCohesion = 0.45;
+          params.ghostAnnealing = 0.5;
+          params.nebulaRepulsion = 0.6;
+          params.centerGravity = 0.0006;
+        } else if (val === 'nebula') {
+          params.anchorStrength = 0.0;
+          params.subfieldCohesion = 0.1;
+          params.ghostAnnealing = 0.3;
+          params.nebulaRepulsion = 1.2;
+          params.centerGravity = 0.0002;
+        } else if (val === 'tight') {
+          params.anchorStrength = 0.0;
+          params.subfieldCohesion = 0.0;
+          params.ghostAnnealing = 0.0;
+          params.nebulaRepulsion = 0.0;
+          params.centerGravity = 0.0035;
+          params.springStiffness = 0.06;
+        }
+        syncInputsWithParams();
+        reheatKinetics();
+      });
+    }
+
+    function syncInputsWithParams() {
+      const setVal = (sliderId, numId, val) => {
+        const s = document.getElementById(sliderId);
+        const n = document.getElementById(numId);
+        if (s) s.value = val;
+        if (n) n.value = val;
+      };
+      setVal('p-sample-count', 'num-sample-count', params.sampleCount);
+      const dsSeed = document.getElementById('input-dataset-seed');
+      if (dsSeed) dsSeed.value = params.datasetSeed;
+      const scSeed = document.getElementById('input-scramble-seed');
+      if (scSeed) scSeed.value = params.scrambleSeed;
+      const chkConn = document.getElementById('chk-only-connected');
+      if (chkConn) chkConn.checked = params.onlyConnected;
+
+      setVal('p-scale', 'num-scale', params.radiusScale);
+      setVal('p-anchor', 'num-anchor', params.anchorStrength);
+      setVal('p-cohesion', 'num-cohesion', params.subfieldCohesion);
+      setVal('p-ghost', 'num-ghost', params.ghostAnnealing);
+      setVal('p-nebula', 'num-nebula', params.nebulaRepulsion);
+      setVal('p-center', 'num-center', params.centerGravity);
+      setVal('p-giant', 'num-giant', params.giantGravity);
+      setVal('p-spring', 'num-spring', params.springStiffness);
+      setVal('p-bridge', 'num-bridge', params.bridgeMult);
+      setVal('p-gap', 'num-gap', params.springGap);
+      setVal('p-gamma', 'num-gamma', params.sizeExponent);
+      setVal('p-mass', 'num-mass', params.massExponent);
+      setVal('p-margin', 'num-margin', params.collisionMargin);
+      setVal('p-speed', 'num-speed', params.simSpeed);
+    }
+
+    /* MYSZ, OBRÓT GLOBU I PRZECIĄGANIE KAMERY */
+    function setupEventListeners() {
+      canvas.addEventListener('mousedown', (e) => {
+        lastMouseX = e.clientX;
+        lastMouseY = e.clientY;
+
+        const found = findNodeAtScreen(e.clientX, e.clientY);
+        if (found) {
+          draggedNode = found;
+          reheatKinetics();
+          return;
+        }
+
+        isPanning = true;
+        dragStartX = e.clientX - camera.x;
+        dragStartY = e.clientY - camera.y;
+      });
+
+      window.addEventListener('mouseup', () => {
+        isPanning = false;
+        draggedNode = null;
+      });
+
+      canvas.addEventListener('mousemove', (e) => {
+        const dx = e.clientX - lastMouseX;
+        const dy = e.clientY - lastMouseY;
+        lastMouseX = e.clientX;
+        lastMouseY = e.clientY;
+
+        if (isPanning) {
+          if (viewMode === 'GLOBE') {
+            // OBRACANIE GLOBU WOKÓŁ OSI
+            globeRotation.y += dx * 0.006;
+            globeRotation.x += dy * 0.006;
+            globeRotation.x = Math.max(-Math.PI / 2.1, Math.min(Math.PI / 2.1, globeRotation.x));
+            tooltip.style.display = 'none';
+            return;
+          } else {
+            camera.x = e.clientX - dragStartX;
+            camera.y = e.clientY - dragStartY;
+            camera.targetX = camera.x;
+            camera.targetY = camera.y;
+            tooltip.style.display = 'none';
+            return;
+          }
+        }
+
+        const found = findNodeAtScreen(e.clientX, e.clientY);
+        if (found !== hoveredNode) {
+          hoveredNode = found;
+          if (hoveredNode) {
+            tooltip.style.display = 'block';
+            tooltip.style.left = `${e.clientX}px`;
+            tooltip.style.top = `${e.clientY}px`;
+            tooltip.innerHTML = `
+              <div style="font-size:12px; max-width:280px; text-overflow:ellipsis; overflow:hidden;">${hoveredNode.title}</div>
+              <div style="margin-top:2px; font-size:10px; color:#8b949e;">
+                Cytowania: <span class="cit">${hoveredNode.citations.toLocaleString()}</span> (${hoveredNode.year || 'b.d.'})
+              </div>
+              <div style="font-size:10px; color:${hoveredNode.color};">${hoveredNode.field_name || hoveredNode.subfield_name}</div>
+            `;
+          } else {
+            tooltip.style.display = 'none';
+          }
+        } else if (hoveredNode) {
+          tooltip.style.left = `${e.clientX}px`;
+          tooltip.style.top = `${e.clientY}px`;
+        }
+      });
+
+      canvas.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        const z = e.deltaY < 0 ? 1.12 : 0.89;
+        const newScale = Math.min(5.0, Math.max(0.15, camera.scale * z));
+        camera.scale = newScale;
+        camera.targetScale = newScale;
+      }, { passive: false });
+
+      canvas.addEventListener('click', () => {
+        if (hoveredNode) {
+          selectNode(hoveredNode);
+        } else {
+          selectedNode = null;
+          inspector.style.display = 'none';
+        }
+      });
+
+      document.getElementById('ins-close').addEventListener('click', () => {
+        selectedNode = null;
+        inspector.style.display = 'none';
+      });
+    }
+
+    function findNodeAtScreen(clientX, clientY) {
+      if (viewMode === 'GLOBE') {
+        for (let i = nodes.length - 1; i >= 0; i--) {
+          const n = nodes[i];
+          const p = projectSphere(n.sx, n.sy, n.sz);
+          if (p.depth > -0.15) { // Na widocznej półkuli
+            const rPx = Math.max(3, n.r * camera.scale);
+            if (Math.hypot(p.x - clientX, p.y - clientY) <= rPx + 3) {
+              return n;
+            }
+          }
+        }
+      } else {
+        const wx = (clientX - camera.x) / camera.scale;
+        const wy = (clientY - camera.y) / camera.scale;
+        for (let i = nodes.length - 1; i >= 0; i--) {
+          const n = nodes[i];
+          if (n.x < 80000 && Math.hypot(n.x - wx, n.y - wy) <= n.r + 2) {
+            return n;
+          }
+        }
+      }
+      return null;
+    }
+
+    function selectNode(n) {
+      selectedNode = n;
+      document.getElementById('ins-title').innerText = n.title;
+      document.getElementById('ins-cites').innerText = n.citations.toLocaleString();
+      document.getElementById('ins-year').innerText = n.year || 'b.d.';
+      document.getElementById('ins-subfield').innerText = n.field_name || n.subfield_name || 'Nauka';
+      document.getElementById('ins-subfield').style.color = n.color;
+      document.getElementById('ins-conn-count').innerText = n.connections.length;
+
+      const list = document.getElementById('ins-connections');
+      list.innerHTML = '';
+
+      n.connections.forEach(id => {
+        const t = nodeMap.get(id);
+        if (!t) return;
+        const row = document.createElement('div');
+        row.className = 'ins-conn-row';
+        row.innerHTML = `
+          <span style="max-width:230px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${t.title}</span>
+          <span class="cites">${t.citations.toLocaleString()}</span>
+        `;
+        row.addEventListener('click', () => selectNode(t));
+        list.appendChild(row);
+      });
+
+      inspector.style.display = 'flex';
+    }
+
+    /* GŁÓWNA PĘTLA RENDEROWANIA */
+    function mainLoop() {
+      for (let s = 0; s < params.simSpeed; s++) {
+        updatePhysicsStep();
+      }
+
+      camera.x += (camera.targetX - camera.x) * 0.12;
+      camera.y += (camera.targetY - camera.y) * 0.12;
+      camera.scale += (camera.targetScale - camera.scale) * 0.12;
+
+      ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
+
+      if (viewMode === 'GLOBE') {
+        renderGlobe();
+      } else {
+        renderPlanar2D();
+      }
+
+      requestAnimationFrame(mainLoop);
+    }
+
+    /* RENDEROWANIE GLOBU 3D */
+    function renderGlobe() {
+      const cx = camera.x;
+      const cy = camera.y;
+      const r = globeRadius * camera.scale;
+
+      // 1. Zarys planety i siatka kartograficzna
+      ctx.save();
+
+      // Cień i wnętrze kuli
+      const globeGrad = ctx.createRadialGradient(cx - r * 0.3, cy - r * 0.3, r * 0.1, cx, cy, r);
+      globeGrad.addColorStop(0, '#151922');
+      globeGrad.addColorStop(0.85, '#0d1015');
+      globeGrad.addColorStop(1, '#080a0d');
+
+      ctx.fillStyle = globeGrad;
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Równoleżniki i południki (delikatny graticule)
+      ctx.strokeStyle = '#1d222d';
+      ctx.lineWidth = 1;
+      for (let lat = -60; lat <= 60; lat += 30) {
+        ctx.beginPath();
+        for (let lon = 0; lon <= 360; lon += 6) {
+          const radLat = Math.radians ? Math.radians(lat) : (lat * Math.PI / 180);
+          const radLon = Math.radians ? Math.radians(lon) : (lon * Math.PI / 180);
+          const p = projectSphere(
+            Math.cos(radLat) * Math.sin(radLon),
+            Math.sin(radLat),
+            Math.cos(radLat) * Math.cos(radLon)
+          );
+          if (p.depth > 0) {
+            if (lon === 0) ctx.moveTo(p.x, p.y);
+            else ctx.lineTo(p.x, p.y);
+          }
+        }
+        ctx.stroke();
+      }
+
+      // Krawędź globu
+      ctx.strokeStyle = '#2d3342';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+
+      // 2. Połączenia (krawędzie) na sferze
+      const active = selectedNode || hoveredNode;
+      if (params.showAllLines) {
+        ctx.strokeStyle = '#1c212c';
+        ctx.lineWidth = 0.8;
+        edges.forEach(e => {
+          const pu = projectSphere(e.source.sx, e.source.sy, e.source.sz);
+          const pv = projectSphere(e.target.sx, e.target.sy, e.target.sz);
+          if (pu.depth > 0 && pv.depth > 0) {
+            ctx.beginPath();
+            ctx.moveTo(pu.x, pu.y);
+            ctx.lineTo(pv.x, pv.y);
+            ctx.stroke();
+          }
+        });
+      }
+
+      if (active) {
+        const pa = projectSphere(active.sx, active.sy, active.sz);
+        active.connections.forEach(id => {
+          const t = nodeMap.get(id);
+          if (!t) return;
+          const pt = projectSphere(t.sx, t.sy, t.sz);
+          if (pa.depth > -0.2 || pt.depth > -0.2) {
+            ctx.strokeStyle = active.color;
+            ctx.lineWidth = 2.0;
+            ctx.beginPath();
+            ctx.moveTo(pa.x, pa.y);
+            const mx = (pa.x + pt.x) / 2;
+            const my = (pa.y + pt.y) / 2;
+            ctx.quadraticCurveTo(mx, my, pt.x, pt.y);
+            ctx.stroke();
+          }
+        });
+      }
+
+      // 3. Kółka prac na sferze (posortowane wg głębokości)
+      const sorted = [...nodes].map(n => {
+        const p = projectSphere(n.sx, n.sy, n.sz);
+        return { node: n, p };
+      }).sort((a, b) => a.p.depth - b.p.depth);
+
+      sorted.forEach(({ node, p }) => {
+        const isHovered = hoveredNode === node;
+        const isSelected = selectedNode === node;
+        const isConnected = active && active.connections.includes(node.id);
+
+        const isVisibleFront = (p.depth > -0.05);
+        let alpha = isVisibleFront ? 1.0 : 0.12;
+        if (active && !isHovered && !isSelected && !isConnected) {
+          alpha *= 0.25;
+        }
+
+        ctx.save();
+        ctx.globalAlpha = alpha;
+
+        const rad = Math.max(3.0, node.r * camera.scale);
+
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, rad, 0, Math.PI * 2);
+        ctx.fillStyle = node.color;
+        ctx.fill();
+
+        ctx.lineWidth = 1.0;
+        ctx.strokeStyle = isSelected ? '#ffffff' : (isHovered ? '#58a6ff' : '#080a0d');
+        ctx.stroke();
+
+        // Tytuły na przedniej półkuli
+        const isGiant = node.r >= 45;
+        if (isVisibleFront && (isGiant || isHovered || isSelected || isConnected)) {
+          const fontSize = isGiant ? Math.max(10, Math.min(14, rad * 0.45)) : 11;
+          ctx.font = `${fontSize}px Georgia, serif`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'top';
+
+          ctx.fillStyle = '#ffffff';
+          ctx.strokeStyle = '#0e1013';
+          ctx.lineWidth = 2.5;
+
+          const title = node.title.length > 26 ? node.title.substring(0, 24) + '...' : node.title;
+          ctx.strokeText(title, p.x, p.y + rad + 3);
+          ctx.fillText(title, p.x, p.y + rad + 3);
+        }
+
+        ctx.restore();
+      });
+    }
+
+    /* RENDEROWANIE PŁASKIE 2D */
+    function renderPlanar2D() {
+      ctx.save();
+      ctx.translate(camera.x, camera.y);
+      ctx.scale(camera.scale, camera.scale);
+
+      // 1. Strefy ambientowe
+      if (params.showZones) {
+        zones.forEach(z => {
+          const grad = ctx.createRadialGradient(z.cx, z.cy, 20, z.cx, z.cy, 360);
+          grad.addColorStop(0, z.color + '10');
+          grad.addColorStop(0.7, z.color + '03');
+          grad.addColorStop(1, 'transparent');
+
+          ctx.fillStyle = grad;
+          ctx.beginPath();
+          ctx.arc(z.cx, z.cy, 360, 0, Math.PI * 2);
+          ctx.fill();
+
+          if (camera.scale < 2.0) {
+            const fontSize = Math.max(14, Math.min(22, 18 / camera.scale));
+            ctx.font = `italic ${fontSize}px Georgia, serif`;
+            ctx.fillStyle = z.color + '88';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(z.name, z.cx, z.cy - 330);
+          }
+        });
+      }
+
+      // 2. Krawędzie 2D
+      const active = selectedNode || hoveredNode;
+      if (params.showAllLines) {
+        ctx.lineWidth = 0.8 / camera.scale;
+        ctx.strokeStyle = '#1a1d27';
+        edges.forEach(e => {
+          ctx.beginPath();
+          ctx.moveTo(e.source.x, e.source.y);
+          ctx.lineTo(e.target.x, e.target.y);
+          ctx.stroke();
+        });
+      }
+
+      if (active) {
+        active.connections.forEach(id => {
+          const t = nodeMap.get(id);
+          if (!t) return;
+          ctx.beginPath();
+          ctx.moveTo(active.x, active.y);
+          const mx = (active.x + t.x) / 2;
+          const my = (active.y + t.y) / 2 - 30;
+          ctx.quadraticCurveTo(mx, my, t.x, t.y);
+
+          ctx.strokeStyle = active.color;
+          ctx.lineWidth = 2.0 / camera.scale;
+          ctx.stroke();
+
+          ctx.strokeStyle = '#ffffff';
+          ctx.lineWidth = 1.0 / camera.scale;
+          ctx.beginPath();
+          ctx.arc(t.x, t.y, t.r + 2, 0, Math.PI * 2);
+          ctx.stroke();
+        });
+      }
+
+      // 3. Kółka prac 2D
+      const sorted = [...nodes].sort((a, b) => a.r - b.r);
+      sorted.forEach(node => {
+        if (node.x > 80000) return;
+
+        const isHovered = hoveredNode === node;
+        const isSelected = selectedNode === node;
+        const isConnected = active && active.connections.includes(node.id);
+
+        let alpha = 1.0;
+        if (active && !isHovered && !isSelected && !isConnected) {
+          alpha = 0.25;
+        }
+
+        ctx.save();
+        ctx.globalAlpha = alpha;
+
+        ctx.beginPath();
+        ctx.arc(node.x, node.y, node.r, 0, Math.PI * 2);
+        ctx.fillStyle = node.color;
+        ctx.fill();
+
+        ctx.lineWidth = (node.r > 25 ? 1.8 : 1.0) / camera.scale;
+        ctx.strokeStyle = isSelected ? '#ffffff' : (isHovered ? '#58a6ff' : '#000000');
+        ctx.stroke();
+
+        const isGiant = node.r >= 45;
+        const show = isGiant || isHovered || isSelected || isConnected;
+
+        if (show && alpha > 0.3) {
+          const fontSize = isGiant 
+            ? Math.max(11, Math.min(15, node.r * 0.24)) 
+            : Math.max(10, Math.min(12, 11 / camera.scale));
+
+          ctx.font = `${fontSize}px Georgia, serif`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'top';
+
+          ctx.fillStyle = '#ffffff';
+          ctx.strokeStyle = '#0e1013';
+          ctx.lineWidth = 3.0 / camera.scale;
+
+          const title = node.title.length > 28 ? node.title.substring(0, 26) + '...' : node.title;
+          ctx.strokeText(title, node.x, node.y + node.r + 4);
+          ctx.fillText(title, node.x, node.y + node.r + 4);
+        }
+
+        ctx.restore();
+      });
+
+      ctx.restore();
+    }
+  </script>
+</body>
+</html>
