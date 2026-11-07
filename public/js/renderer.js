@@ -2,7 +2,11 @@
 
 export const GLOBE_RADIUS = 660;
 
-export function projectSphere(sx, sy, sz, globeRotation, camera) {
+export function getGlobeRadius(state) {
+  return (state && state.params && state.params.globeRadius) ? state.params.globeRadius : GLOBE_RADIUS;
+}
+
+export function projectSphere(sx, sy, sz, globeRotation, camera, globeRadius = GLOBE_RADIUS) {
   const cosY = Math.cos(globeRotation.y);
   const sinY = Math.sin(globeRotation.y);
   const x1 = sx * cosY - sz * sinY;
@@ -13,7 +17,7 @@ export function projectSphere(sx, sy, sz, globeRotation, camera) {
   const y2 = sy * cosX - z1 * sinX;
   const z2 = sy * sinX + z1 * cosX;
 
-  const r = GLOBE_RADIUS * camera.scale;
+  const r = globeRadius * camera.scale;
   return {
     x: camera.x + x1 * r,
     y: camera.y - y2 * r,
@@ -25,8 +29,8 @@ export function projectSphere(sx, sy, sz, globeRotation, camera) {
 /**
  * Inverse projection from 2D screen point onto front hemisphere of S^2
  */
-export function unprojectScreenToSphere(clientX, clientY, globeRotation, camera) {
-  const r = GLOBE_RADIUS * camera.scale;
+export function unprojectScreenToSphere(clientX, clientY, globeRotation, camera, globeRadius = GLOBE_RADIUS) {
+  const r = globeRadius * camera.scale;
   let x1 = (clientX - camera.x) / r;
   let y2 = -(clientY - camera.y) / r;
   const sq = x1 * x1 + y2 * y2;
@@ -94,7 +98,8 @@ export class AtlasRenderer {
     const { camera, globeRotation, params, hoveredNode, selectedNode } = state;
     const cx = camera.x;
     const cy = camera.y;
-    const r = GLOBE_RADIUS * camera.scale;
+    const globeRadius = params.globeRadius || GLOBE_RADIUS;
+    const r = globeRadius * camera.scale;
     const n = views.count;
     this.ensureCapacity(n);
 
@@ -132,7 +137,8 @@ export class AtlasRenderer {
           sinLat,
           cosLat * Math.cos(radLon),
           globeRotation,
-          camera
+          camera,
+          globeRadius
         );
         if (p.depth > 0) {
           if (!penDown) {

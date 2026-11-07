@@ -20,6 +20,7 @@ pub struct SimParams {
     pub size_exponent: f32,
     pub mass_exponent: f32,
     pub collision_margin: f32,
+    pub nebula_cutoff: f32,
 }
 
 impl Default for SimParams {
@@ -39,6 +40,7 @@ impl Default for SimParams {
             size_exponent: 0.36,
             mass_exponent: 1.8,
             collision_margin: 2.0,
+            nebula_cutoff: 0.45,
         }
     }
 }
@@ -98,6 +100,7 @@ pub struct Universe {
     // Spatial Acceleration Structures
     pub grid_2d: SpatialGrid2D,
     pub grid_3d: SpatialGrid3D,
+    pub nebula_grid_3d: SpatialGrid3D,
 
     // Simulation Control
     pub params: SimParams,
@@ -138,6 +141,7 @@ impl Universe {
             edge_is_cross: Vec::new(),
             grid_2d: SpatialGrid2D::new(96, 96, -2400.0, 50.0),
             grid_3d: SpatialGrid3D::new(14),
+            nebula_grid_3d: SpatialGrid3D::new(5),
             params: SimParams::default(),
             temperature: 1.0,
             globe_radius: 660.0,
@@ -326,6 +330,7 @@ impl Universe {
                     &self.edge_weight,
                     &self.edge_is_cross,
                     &mut self.grid_3d,
+                    &mut self.nebula_grid_3d,
                     &self.params,
                     self.globe_radius,
                     self.temperature,

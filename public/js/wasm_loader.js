@@ -208,6 +208,8 @@ export class SimBridge {
       edgeV,
       edgeW
     );
+    const scSeed = parseInt(params.scrambleSeed, 10) || 42;
+    this.universe.scramble(scSeed >>> 0, isGlobe);
   }
 
   syncAllParams(params) {
@@ -218,6 +220,7 @@ export class SimBridge {
       'subfieldCohesion',
       'ghostAnnealing',
       'nebulaRepulsion',
+      'nebulaCutoff',
       'centerGravity',
       'giantGravity',
       'springStiffness',
@@ -227,6 +230,7 @@ export class SimBridge {
       'sizeExponent',
       'massExponent',
       'collisionMargin',
+      'globeRadius',
     ];
     for (const k of keys) {
       if (params[k] !== undefined) {

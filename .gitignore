@@ -10,6 +10,16 @@ __pycache__/
 venv/
 env/
 
+# Large generated datasets & cache (reproducible from python scripts)
+data/
+reports/
+*.parquet
+*.h5
+*.csv
+
+# Temporary diagnostic dumps
+/reports/*.json
+
 # macOS & IDE
 .DS_Store
 .idea/

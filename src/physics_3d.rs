@@ -52,6 +52,7 @@ pub fn step_3d(
     edge_weight: &[f32],
     edge_is_cross: &[u8],
     grid: &mut SpatialGrid3D,
+    nebula_grid: &mut SpatialGrid3D,
     params: &SimParams,
     globe_radius: f32,
     temperature: f32,
@@ -123,12 +124,20 @@ pub fn step_3d(
         }
     }
 
-    // 2. Isotropic C1-Smooth Inter-field Spherical Nebula Repulsion (zero voxel-grid artifacts)
+    // 2. Isotropic C1-Smooth Inter-field Spherical Nebula Repulsion using coarse spatial grid (zero voxel-grid artifacts, O(N))
     if params.nebula_repulsion > 0.0 {
         let rep_scale = params.nebula_repulsion * 0.00035 * temperature;
-        let r_cut: f32 = 0.45;
-        let r_cut_sq: f32 = r_cut * r_cut;
-        let inv_r_cut: f32 = 1.0 / r_cut;
+        let r_cut = params.nebula_cutoff.clamp(0.05, 1.2);
+        let r_cut_sq = r_cut * r_cut;
+        let inv_r_cut = 1.0 / r_cut;
+
+        nebula_grid.rebuild(sx, sy, sz);
+
+        let cell_size = nebula_grid.cell_size();
+        let search_radius = (r_cut / cell_size).ceil() as i32;
+        let dim = nebula_grid.dim;
+        let dim_i = dim as i32;
+        let dim_sq = dim * dim;
 
         for i in 0..n {
             let ax = sx[i];
@@ -136,31 +145,54 @@ pub fn step_3d(
             let az = sz[i];
             let fa = field_idx[i];
 
-            for j in (i + 1)..n {
-                if field_idx[j] == fa {
-                    continue;
-                }
-                let dx = sx[j] - ax;
-                let dy = sy[j] - ay;
-                let dz = sz[j] - az;
-                let chord_sq = dx * dx + dy * dy + dz * dz;
-                if chord_sq < r_cut_sq && chord_sq > 1e-6 {
-                    let dist = chord_sq.sqrt();
-                    // Smooth C1 falloff: (1 - d/r_cut)^2 / (d + 0.05) -> 0 smoothly at r_cut
-                    let q = 1.0 - dist * inv_r_cut;
-                    let push = rep_scale * (q * q) / (dist + 0.05);
-                    let nx = dx / dist;
-                    let ny = dy / dist;
-                    let nz = dz / dist;
-                    if (i as i32) != dragged_idx {
-                        svx[i] -= nx * push;
-                        svy[i] -= ny * push;
-                        svz[i] -= nz * push;
-                    }
-                    if (j as i32) != dragged_idx {
-                        svx[j] += nx * push;
-                        svy[j] += ny * push;
-                        svz[j] += nz * push;
+            let (cx, cy, cz) = nebula_grid.cell_coords(ax, ay, az);
+            let cx_i = cx as i32;
+            let cy_i = cy as i32;
+            let cz_i = cz as i32;
+
+            let min_x = (cx_i - search_radius).max(0);
+            let max_x = (cx_i + search_radius).min(dim_i - 1);
+            let min_y = (cy_i - search_radius).max(0);
+            let max_y = (cy_i + search_radius).min(dim_i - 1);
+            let min_z = (cz_i - search_radius).max(0);
+            let max_z = (cz_i + search_radius).min(dim_i - 1);
+
+            for nz in min_z..=max_z {
+                let z_offset = (nz as usize) * dim_sq;
+                for ny in min_y..=max_y {
+                    let yz_offset = z_offset + (ny as usize) * dim;
+                    for nx in min_x..=max_x {
+                        let c_idx = yz_offset + (nx as usize);
+                        let mut curr = nebula_grid.head[c_idx];
+                        while curr >= 0 {
+                            let j = curr as usize;
+                            if j > i && field_idx[j] != fa {
+                                let dx = sx[j] - ax;
+                                let dy = sy[j] - ay;
+                                let dz = sz[j] - az;
+                                let chord_sq = dx * dx + dy * dy + dz * dz;
+                                if chord_sq < r_cut_sq && chord_sq > 1e-6 {
+                                    let dist = chord_sq.sqrt();
+                                    // Smooth C1 falloff: (1 - d/r_cut)^2 / (d + 0.05) -> exactly 0 smoothly at r_cut
+                                    let q = 1.0 - dist * inv_r_cut;
+                                    let push = rep_scale * (q * q) / (dist + 0.05);
+                                    let nx_dir = dx / dist;
+                                    let ny_dir = dy / dist;
+                                    let nz_dir = dz / dist;
+                                    if (i as i32) != dragged_idx {
+                                        svx[i] -= nx_dir * push;
+                                        svy[i] -= ny_dir * push;
+                                        svz[i] -= nz_dir * push;
+                                    }
+                                    if (j as i32) != dragged_idx {
+                                        svx[j] += nx_dir * push;
+                                        svy[j] += ny_dir * push;
+                                        svz[j] += nz_dir * push;
+                                    }
+                                }
+                            }
+                            curr = nebula_grid.next[j];
+                        }
                     }
                 }
             }

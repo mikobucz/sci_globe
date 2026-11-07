@@ -15,6 +15,8 @@
     <span>&bull;</span>
     <span id="node-count">1 000 prac</span>
     <span>&bull;</span>
+    <span id="coords-readout" style="color:#8b949e; font-variant-numeric:tabular-nums;">lat: -20.1&deg;, lon: +11.5&deg;</span>
+    <span>&bull;</span>
     <button class="btn-view-toggle" id="btn-view-toggle">[ Widok: Glob 3D | Przełącz na 2D ]</button>
   </div>
 
@@ -39,7 +41,7 @@
           <span class="name">Zbiór wiedzy (Dataset)</span>
         </div>
         <select class="kg-select" id="select-dataset">
-          <option value="global" selected>Wszystkie Nauki Świata (Global - 4 000 prac)</option>
+          <option value="global" selected>Wszystkie Nauki Świata (Global - 10 000 prac)</option>
           <option value="math">Tylko Matematyka (Oryginalny - 1 000 prac)</option>
         </select>
         <div class="kg-note">
@@ -54,8 +56,8 @@
           <span class="name">Aktywne prace w symulacji</span>
         </div>
         <div class="kg-param-controls">
-          <input type="range" class="kg-slider" id="p-sample-count" min="100" max="4000" step="50" value="1000">
-          <input type="number" class="kg-num-input" id="num-sample-count" min="100" max="4000" step="50" value="1000">
+          <input type="range" class="kg-slider" id="p-sample-count" min="100" max="10000" step="50" value="1000">
+          <input type="number" class="kg-num-input" id="num-sample-count" min="100" max="10000" step="50" value="1000">
         </div>
         <div style="display:flex; align-items:baseline; gap:8px; margin-top:4px;">
           <span style="font-size:11px; color:#8c92a0;">Ziarno doboru prac (Dataset Seed):</span>
@@ -112,9 +114,13 @@
           <span style="font-size:11px; color:#8c92a0;">Ziarno kinetyki (Scramble Seed):</span>
           <input type="number" class="kg-num-input" id="input-scramble-seed" value="42" style="width:75px; text-align:left;">
         </div>
+        <div style="display:flex; align-items:baseline; gap:8px; margin-top:6px;">
+          <input type="text" class="kg-text-input" id="input-search-paper" placeholder="Szukaj pracy / #idx lub lat,lon (np. -28, 127)...">
+          <button class="kg-text-btn" id="btn-find-paper">[ leć ]</button>
+        </div>
         <div class="kg-note">
-          <strong>Seed</strong>: powtarzalny, deterministyczny start fizyki z losowym obrotem SO(3).<br>
-          <strong>Wzrost organiczny</strong>: buduje mapę sekwencyjnie od gigantów na zewnątrz.
+          <strong>Seed</strong>: powtarzalny, deterministyczny start fizyki z tym samym obrotem SO(3) w CLI i przeglądarce.<br>
+          <strong>Nawigacja</strong>: wpisz tytuł pracy, indeks <code>#123</code> albo współrzędne <code>lat, lon</code> z raportu CLI, aby obrócić globus prosto na wyspę.
         </div>
       </div>
 
@@ -191,10 +197,14 @@
           <input type="range" class="kg-slider" id="p-nebula" min="0" max="3" step="0.05" value="0.0">
           <input type="number" class="kg-num-input" id="num-nebula" min="0" max="3" step="0.05" value="0.0">
         </div>
+        <div style="display:flex; align-items:baseline; gap:8px; margin-top:4px;">
+          <span style="font-size:11px; color:#8c92a0;">Zasięg odpychania (Cutoff rad):</span>
+          <input type="number" class="kg-num-input" id="num-nebula-cut" min="0.05" max="1.0" step="0.02" value="0.45" style="width:65px; text-align:left;">
+          <input type="range" class="kg-slider" id="p-nebula-cut" min="0.05" max="1.0" step="0.02" value="0.45">
+        </div>
         <div class="kg-note">
           Długodystansowe odpychanie obcych dyscyplin od siebie (Coulomb).<br>
-          <span class="dir">&larr; Lewo:</span> Zbity dysk – dziedziny bezpośrednio stykają się ze sobą.<br>
-          <span class="dir">&rarr; Prawo:</span> Rozdmuchuje układ w ramiona galaktyki z pustą przestrzenią.
+          <span class="dir">Zasięg (Cutoff):</span> Maksymalny dystans kątowy odpychania (domyślnie 0.45 rad ~ 26°). Zoptymalizowany przestrzennie O(N).
         </div>
       </div>
 
@@ -307,6 +317,22 @@
           Globalne pomniejszanie lub powiększanie wszystkich kółek.<br>
           <span class="dir">&larr; Lewo:</span> Drobne kropki, olbrzymia wolna przestrzeń i przewiew.<br>
           <span class="dir">&rarr; Prawo:</span> Duże, monumentalne dyski.
+        </div>
+      </div>
+
+      <!-- PROMIEN GLOBUSA -->
+      <div class="kg-param">
+        <div class="kg-param-header">
+          <span class="name">Promień Globusa (Globe Radius)</span>
+        </div>
+        <div class="kg-param-controls">
+          <input type="range" class="kg-slider" id="p-globe-radius" min="300" max="2000" step="10" value="660">
+          <input type="number" class="kg-num-input" id="num-globe-radius" min="300" max="2000" step="10" value="660">
+        </div>
+        <div class="kg-note">
+          Fizyczny i wizualny promień sfery 3D (domyślnie 660px).<br>
+          <span class="dir">&larr; Lewo:</span> Mniejsza kula (ciaśniejszy upakunek prac).<br>
+          <span class="dir">&rarr; Prawo:</span> Olbrzymi globus z ogromną powierzchnią na tysiące artykułów.
         </div>
       </div>
 

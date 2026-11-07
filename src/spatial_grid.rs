@@ -119,5 +119,10 @@ impl SpatialGrid3D {
         let cz = (((z - self.min_coord) * self.inv_cell_size) as i32).clamp(0, dim_i - 1) as usize;
         (cx, cy, cz)
     }
+
+    #[inline]
+    pub fn cell_size(&self) -> f32 {
+        1.0 / self.inv_cell_size
+    }
 }
 

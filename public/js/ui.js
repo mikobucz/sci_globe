@@ -15,6 +15,7 @@ const sidebar = document.getElementById('sidebar');
 const statusDot = document.getElementById('status-dot');
 const statusText = document.getElementById('status-text');
 const nodeCountEl = document.getElementById('node-count');
+const coordsReadout = document.getElementById('coords-readout');
 const btnViewToggle = document.getElementById('btn-view-toggle');
 const btnToggleOptions = document.getElementById('btn-toggle-options');
 const btnCloseSidebar = document.getElementById('btn-close-sidebar');
@@ -24,7 +25,7 @@ const renderer = new AtlasRenderer(canvas);
 
 const state = {
   viewMode: 'GLOBE',
-  globeRotation: { x: 0.35, y: -0.2 },
+  globeRotation: { x: 0.35, y: -0.2, targetX: null, targetY: null },
   camera: {
     x: 0,
     y: 0,
@@ -41,10 +42,12 @@ const state = {
     scrambleSeed: 42,
     simSpeed: 2,
     radiusScale: 0.75,
+    globeRadius: 660,
     anchorStrength: 0.35,
     subfieldCohesion: 0.0,
     ghostAnnealing: 0.1,
     nebulaRepulsion: 0.0,
+    nebulaCutoff: 0.45,
     centerGravity: 0.0012,
     giantGravity: 0.0,
     springStiffness: 0.035,
@@ -288,10 +291,12 @@ function setupSidebarBindings() {
 
   bindPair('p-speed', 'num-speed', 'simSpeed', true);
   bindPair('p-scale', 'num-scale', 'radiusScale');
+  bindPair('p-globe-radius', 'num-globe-radius', 'globeRadius', true);
   bindPair('p-anchor', 'num-anchor', 'anchorStrength');
   bindPair('p-cohesion', 'num-cohesion', 'subfieldCohesion');
   bindPair('p-ghost', 'num-ghost', 'ghostAnnealing');
   bindPair('p-nebula', 'num-nebula', 'nebulaRepulsion');
+  bindPair('p-nebula-cut', 'num-nebula-cut', 'nebulaCutoff');
   bindPair('p-center', 'num-center', 'centerGravity');
   bindPair('p-giant', 'num-giant', 'giantGravity');
   bindPair('p-spring', 'num-spring', 'springStiffness');
@@ -335,6 +340,57 @@ function setupSidebarBindings() {
     .getElementById('btn-reset-view')
     .addEventListener('click', resetCameraView);
 
+  const inputSearchPaper = document.getElementById('input-search-paper');
+  const btnFindPaper = document.getElementById('btn-find-paper');
+  const flyToQuery = () => {
+    if (!inputSearchPaper) return;
+    const q = (inputSearchPaper.value || '').trim();
+    if (!q) return;
+
+    // 1. Check if query is "#idx" or "idx=123"
+    const idxMatch = q.match(/^(?:#|idx=)?(\d+)$/i);
+    if (idxMatch) {
+      const idx = parseInt(idxMatch[1], 10);
+      if (idx >= 0 && idx < bridge.nodes.length) {
+        flyToNode(bridge.nodes[idx]);
+        return;
+      }
+    }
+
+    // 2. Check if query is "lat, lon" coordinates (e.g. "-28.4, 127.1" or "+41.2, -15.0")
+    const coordMatch = q.match(/^([+-]?\d+(?:\.\d+)?)\s*[,;\s]\s*([+-]?\d+(?:\.\d+)?)$/);
+    if (coordMatch) {
+      const latDeg = parseFloat(coordMatch[1]);
+      const lonDeg = parseFloat(coordMatch[2]);
+      flyToLatLon(latDeg, lonDeg);
+      return;
+    }
+
+    // 3. Otherwise search by paper title substring
+    const lower = q.toLowerCase();
+    let best = null;
+    for (let i = 0; i < bridge.nodes.length; i++) {
+      const n = bridge.nodes[i];
+      if (n.title.toLowerCase().includes(lower)) {
+        if (!best || n.citations > best.citations) {
+          best = n;
+        }
+      }
+    }
+    if (best) {
+      flyToNode(best);
+    }
+  };
+  if (btnFindPaper) btnFindPaper.addEventListener('click', flyToQuery);
+  if (inputSearchPaper) {
+    inputSearchPaper.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        flyToQuery();
+      }
+    });
+  }
+
   const selectPreset = document.getElementById('select-preset');
   const inputPresetName = document.getElementById('input-preset-name');
   const btnSavePreset = document.getElementById('btn-save-preset');
@@ -350,12 +406,18 @@ function setupSidebarBindings() {
   }
 
   const SNAPSHOT_KEYS = [
+    'dataset',
+    'sampleCount',
+    'datasetSeed',
+    'scrambleSeed',
     'simSpeed',
     'radiusScale',
+    'globeRadius',
     'anchorStrength',
     'subfieldCohesion',
     'ghostAnnealing',
     'nebulaRepulsion',
+    'nebulaCutoff',
     'centerGravity',
     'giantGravity',
     'springStiffness',
@@ -369,6 +431,33 @@ function setupSidebarBindings() {
     'showAllLines',
     'showZones',
   ];
+
+  const syncPresetsToDisk = async () => {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(customPresets));
+    } catch (_) {}
+    try {
+      await fetch('/api/presets', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(customPresets),
+      });
+    } catch (_) {}
+  };
+
+  // Load presets from public/presets.json and merge with localStorage
+  fetch('presets.json')
+    .then((r) => (r.ok ? r.json() : {}))
+    .then((diskPresets) => {
+      if (diskPresets && typeof diskPresets === 'object') {
+        customPresets = { ...diskPresets, ...customPresets };
+      }
+      rebuildPresetOptions();
+      if (Object.keys(customPresets).length > 0) {
+        syncPresetsToDisk();
+      }
+    })
+    .catch(() => {});
 
   const rebuildPresetOptions = (selectedValue = null) => {
     // Remove previously rendered custom options
@@ -407,9 +496,7 @@ function setupSidebarBindings() {
       snapshot[k] = state.params[k];
     });
     customPresets[name] = snapshot;
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(customPresets));
-    } catch (_) {}
+    syncPresetsToDisk();
 
     const valKey = `custom:${name}`;
     rebuildPresetOptions(valKey);
@@ -430,9 +517,7 @@ function setupSidebarBindings() {
       if (val && val.startsWith('custom:')) {
         const name = val.slice('custom:'.length);
         delete customPresets[name];
-        try {
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(customPresets));
-        } catch (_) {}
+        syncPresetsToDisk();
         rebuildPresetOptions('anchors');
       }
     });
@@ -503,12 +588,7 @@ function setupSidebarBindings() {
     }
 
     syncInputsWithParams();
-    if (p.onlyConnected !== prevOnlyConnected) {
-      rebuildActiveSubset();
-    } else {
-      bridge.syncAllParams(p);
-      markSimActive();
-    }
+    rebuildActiveSubset();
   });
 }
 
@@ -533,10 +613,12 @@ function syncInputsWithParams() {
   if (chkZones) chkZones.checked = p.showZones;
 
   setVal('p-scale', 'num-scale', p.radiusScale);
+  setVal('p-globe-radius', 'num-globe-radius', p.globeRadius || 660);
   setVal('p-anchor', 'num-anchor', p.anchorStrength);
   setVal('p-cohesion', 'num-cohesion', p.subfieldCohesion);
   setVal('p-ghost', 'num-ghost', p.ghostAnnealing);
   setVal('p-nebula', 'num-nebula', p.nebulaRepulsion);
+  setVal('p-nebula-cut', 'num-nebula-cut', p.nebulaCutoff || 0.45);
   setVal('p-center', 'num-center', p.centerGravity);
   setVal('p-giant', 'num-giant', p.giantGravity);
   setVal('p-spring', 'num-spring', p.springStiffness);
@@ -587,7 +669,8 @@ function setupEventListeners() {
           e.clientX,
           e.clientY,
           state.globeRotation,
-          state.camera
+          state.camera,
+          state.params.globeRadius || 660
         );
         bridge.universe.move_node_3d(state.draggedNode.idx, sp.sx, sp.sy, sp.sz);
       } else {
@@ -678,7 +761,8 @@ function findNodeAtScreen(clientX, clientY) {
         views.sy[i],
         views.sz[i],
         state.globeRotation,
-        state.camera
+        state.camera,
+        state.params.globeRadius || 660
       );
       if (p.depth > -0.15) {
         const rPx = Math.max(3, views.r[i] * state.camera.scale);
@@ -704,9 +788,16 @@ function findNodeAtScreen(clientX, clientY) {
 
 function selectNode(n) {
   state.selectedNode = n;
-  document.getElementById('ins-title').innerText = n.title;
+  const views = bridge.getViews();
+  const sx = views.sx[n.idx] || 0;
+  const sy = Math.max(-1, Math.min(1, views.sy[n.idx] || 0));
+  const sz = views.sz[n.idx] || 0;
+  const latDeg = (Math.asin(sy) * 180) / Math.PI;
+  const lonDeg = (Math.atan2(sx, sz) * 180) / Math.PI;
+
+  document.getElementById('ins-title').innerText = `[#${n.idx}] ${n.title}`;
   document.getElementById('ins-cites').innerText = n.citations.toLocaleString();
-  document.getElementById('ins-year').innerText = n.year || 'b.d.';
+  document.getElementById('ins-year').innerText = `${n.year || 'b.d.'} | lat: ${latDeg >= 0 ? '+' : ''}${latDeg.toFixed(1)}°, lon: ${lonDeg >= 0 ? '+' : ''}${lonDeg.toFixed(1)}°`;
   document.getElementById('ins-subfield').innerText = n.field_name;
   document.getElementById('ins-subfield').style.color = n.color;
   document.getElementById('ins-conn-count').innerText = n.connections.length;
@@ -720,14 +811,43 @@ function selectNode(n) {
     const row = document.createElement('div');
     row.className = 'ins-conn-row';
     row.innerHTML = `
-      <span style="max-width:230px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${t.title}</span>
+      <span style="max-width:230px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">[#${t.idx}] ${t.title}</span>
       <span class="cites">${t.citations.toLocaleString()}</span>
     `;
-    row.addEventListener('click', () => selectNode(t));
+    row.addEventListener('click', () => flyToNode(t));
     list.appendChild(row);
   });
 
   inspector.style.display = 'flex';
+}
+
+function flyToLatLon(latDeg, lonDeg) {
+  if (state.viewMode !== 'GLOBE') {
+    state.viewMode = 'GLOBE';
+    updateViewToggleBtn();
+    bridge.universe.set_view_mode(true);
+    resetCameraView();
+  }
+  const latRad = (latDeg * Math.PI) / 180;
+  const lonRad = (lonDeg * Math.PI) / 180;
+  state.globeRotation.targetX = -latRad;
+  state.globeRotation.targetY = lonRad;
+}
+
+function flyToNode(n) {
+  if (!n) return;
+  selectNode(n);
+  const views = bridge.getViews();
+  if (state.viewMode === 'GLOBE') {
+    const sx = views.sx[n.idx];
+    const sy = Math.max(-1, Math.min(1, views.sy[n.idx]));
+    const sz = views.sz[n.idx];
+    state.globeRotation.targetX = -Math.asin(sy);
+    state.globeRotation.targetY = Math.atan2(sx, sz);
+  } else {
+    state.camera.targetX = window.innerWidth / 2 - views.x[n.idx] * state.camera.scale;
+    state.camera.targetY = window.innerHeight / 2 - views.y[n.idx] * state.camera.scale;
+  }
 }
 
 function mainLoop() {
@@ -738,6 +858,34 @@ function mainLoop() {
       statusDot.className = 'status-dot frozen';
       statusText.innerText = 'Ustabilizowana';
     }
+  }
+
+  if (state.globeRotation.targetX !== null && state.globeRotation.targetY !== null) {
+    if (isPanning) {
+      state.globeRotation.targetX = null;
+      state.globeRotation.targetY = null;
+    } else {
+      const dx = state.globeRotation.targetX - state.globeRotation.x;
+      let dy = state.globeRotation.targetY - state.globeRotation.y;
+      while (dy > Math.PI) dy -= Math.PI * 2;
+      while (dy < -Math.PI) dy += Math.PI * 2;
+      state.globeRotation.x += dx * 0.14;
+      state.globeRotation.y += dy * 0.14;
+      if (Math.abs(dx) < 0.002 && Math.abs(dy) < 0.002) {
+        state.globeRotation.x = state.globeRotation.targetX;
+        state.globeRotation.y = state.globeRotation.targetY;
+        state.globeRotation.targetX = null;
+        state.globeRotation.targetY = null;
+      }
+    }
+  }
+
+  if (coordsReadout && state.viewMode === 'GLOBE') {
+    const latCenter = (-state.globeRotation.x * 180) / Math.PI;
+    let lonCenter = ((state.globeRotation.y * 180) / Math.PI) % 360;
+    if (lonCenter > 180) lonCenter -= 360;
+    if (lonCenter < -180) lonCenter += 360;
+    coordsReadout.innerText = `lat: ${latCenter >= 0 ? '+' : ''}${latCenter.toFixed(1)}°, lon: ${lonCenter >= 0 ? '+' : ''}${lonCenter.toFixed(1)}°`;
   }
 
   state.camera.x += (state.camera.targetX - state.camera.x) * 0.12;

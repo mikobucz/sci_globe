@@ -6,6 +6,9 @@ pub mod physics_2d;
 pub mod physics_3d;
 pub mod spatial_grid;
 
+#[cfg(not(target_arch = "wasm32"))]
+pub mod diagnostics;
+
 use engine::Universe;
 use wasm_bindgen::prelude::*;
 
@@ -113,6 +116,10 @@ impl WasmUniverse {
                 needs_radii = true;
             }
             "collisionMargin" => p.collision_margin = val,
+            "nebulaCutoff" => p.nebula_cutoff = val.clamp(0.05, 1.2),
+            "globeRadius" => {
+                self.inner.globe_radius = val.max(100.0);
+            }
             _ => {}
         }
         if needs_radii {

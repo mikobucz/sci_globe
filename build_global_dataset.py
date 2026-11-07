@@ -63,7 +63,7 @@ FIELDS = [
     }
 ]
 
-def fetch_field_papers(field_id, target_count=500):
+def fetch_field_papers(field_id, target_count=1250):
     papers = []
     page = 1
     per_page = 200
@@ -80,7 +80,7 @@ def fetch_field_papers(field_id, target_count=500):
         
         req = urllib.request.Request(url, headers={'User-Agent': 'mailto:mathmap@example.org'})
         try:
-            with urllib.request.urlopen(req, timeout=15) as resp:
+            with urllib.request.urlopen(req, timeout=25) as resp:
                 data = json.loads(resp.read().decode('utf-8'))
                 results = data.get('results', [])
                 if not results:
@@ -90,7 +90,7 @@ def fetch_field_papers(field_id, target_count=500):
                 if len(results) < fetch_n:
                     break
                 page += 1
-                time.sleep(0.12)
+                time.sleep(0.08)
         except Exception as e:
             print(f"  Error fetching page {page} for field {field_id}: {e}")
             time.sleep(1)
@@ -103,11 +103,11 @@ def main():
     all_nodes = []
     paper_id_map = {}
     
-    print("=== Fetching Global Science Dataset (8 Fields x 500 = 4,000 papers) ===")
+    print("=== Fetching Global Science Dataset (8 Fields x 1,250 = 10,000 papers) ===")
     
     for f in FIELDS:
         print(f"\nFetching {f['name']} (Field {f['id']})...")
-        papers = fetch_field_papers(f['id'], target_count=500)
+        papers = fetch_field_papers(f['id'], target_count=1250)
         
         for p in papers:
             full_id = p.get('id', '')
