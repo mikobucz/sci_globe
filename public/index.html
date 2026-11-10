@@ -3,12 +3,12 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>MathMap &amp; Global Science Atlas (Rust + Wasm)</title>
+  <title>sci_globe &amp; Global Science Atlas (Rust + Wasm)</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
-  <!-- DYSKRETNY STATUS I PRZEŁĄCZNIK WIDOKU 2D / GLOB 3D -->
+  <!-- DYSKRETNY STATUS I WSPÓŁRZĘDNE -->
   <div class="status-badge">
     <div class="status-dot" id="status-dot"></div>
     <span id="status-text">Aktywna (Wasm)</span>
@@ -16,12 +16,40 @@
     <span id="node-count">1 000 prac</span>
     <span>&bull;</span>
     <span id="coords-readout" style="color:#8b949e; font-variant-numeric:tabular-nums;">lat: -20.1&deg;, lon: +11.5&deg;</span>
-    <span>&bull;</span>
-    <button class="btn-view-toggle" id="btn-view-toggle">[ Widok: Glob 3D | Przełącz na 2D ]</button>
   </div>
 
-  <!-- JEDYNY GŁÓWNY PRZYCISK: OPCJE -->
-  <button class="btn-options-main" id="btn-toggle-options">[ Opcje ]</button>
+  <!-- PRZYCISKI PO PRAWEJ STRONIE: OPCJE I WYGENEROWANE MAPY -->
+  <div class="top-right-actions">
+    <button class="btn-top-action" id="btn-toggle-options">[ Opcje ]</button>
+    <button class="btn-top-action" id="btn-toggle-saved">[ Wygenerowane mapy ]</button>
+  </div>
+
+  <!-- DRAWER: WYGENEROWANE MAPY -->
+  <div class="sidebar-drawer" id="drawer-saved">
+    <div class="drawer-header">
+      <div class="title">Wygenerowane Mapy (Baza Obliczeń)</div>
+      <button class="drawer-close" id="btn-close-saved">[ zamknij ]</button>
+    </div>
+    <div class="drawer-content">
+      <div class="kg-param" style="border-bottom:none;">
+        <div style="font-size:12px; color:#8c92a0; line-height:1.5;">
+          Zapisane gotowe układy z terminala (CLI) lub przeglądarki — z finalnymi współrzędnymi na globusie, gotowe do natychmiastowego wczytania bez ponownych obliczeń.
+        </div>
+        <div style="margin-top:10px; display:flex; gap:8px;">
+          <input type="text" class="kg-text-input" id="input-save-snapshot-name" placeholder="Nazwa bieżącego układu...">
+          <button class="kg-text-btn" id="btn-save-current-snapshot">[ zapisz stan ]</button>
+        </div>
+        <div style="margin-top:8px; display:flex; align-items:center; justify-content:space-between; gap:8px;">
+          <input type="file" id="input-import-snapshot" accept=".json" style="display:none;">
+          <button class="kg-text-btn" id="btn-import-snapshot">[ wgraj plik współrzędnych (.json) ]</button>
+          <span id="import-snapshot-status" style="font-size:11px; color:#8c92a0;"></span>
+        </div>
+      </div>
+      <div id="saved-maps-list" style="display:flex; flex-direction:column; gap:12px; margin-top:10px;">
+        <!-- Dynamicznie generowane karty map -->
+      </div>
+    </div>
+  </div>
 
   <canvas id="atlas-canvas"></canvas>
   <div id="tooltip"></div>
@@ -108,7 +136,6 @@
           <button class="kg-text-btn" id="btn-reheat">[ podgrzej ]</button>
           <button class="kg-text-btn" id="btn-pause">[ pauza ]</button>
           <button class="kg-text-btn" id="btn-reset-view">[ wycentruj ]</button>
-          <button class="kg-text-btn" id="btn-grow">[ wzrost organiczny ]</button>
         </div>
         <div style="display:flex; align-items:baseline; gap:8px; margin-top:8px;">
           <span style="font-size:11px; color:#8c92a0;">Ziarno kinetyki (Scramble Seed):</span>
@@ -205,22 +232,6 @@
         <div class="kg-note">
           Długodystansowe odpychanie obcych dyscyplin od siebie (Coulomb).<br>
           <span class="dir">Zasięg (Cutoff):</span> Maksymalny dystans kątowy odpychania (domyślnie 0.45 rad ~ 26°). Zoptymalizowany przestrzennie O(N).
-        </div>
-      </div>
-
-      <!-- GRAWITACJA CENTRALNA -->
-      <div class="kg-param">
-        <div class="kg-param-header">
-          <span class="name">Grawitacja centralna (Center Gravity)</span>
-        </div>
-        <div class="kg-param-controls">
-          <input type="range" class="kg-slider" id="p-center" min="0" max="0.005" step="0.0001" value="0.0012">
-          <input type="number" class="kg-num-input" id="num-center" min="0" max="0.005" step="0.0001" value="0.0012">
-        </div>
-        <div class="kg-note">
-          Przyciąganie wszystkich kółek w stronę centrum (tylko widok 2D).<br>
-          <span class="dir">&larr; Lewo:</span> Luźna chmura swobodnie rozszerzająca się w nieskończoność.<br>
-          <span class="dir">&rarr; Prawo:</span> Ciasne zapadanie się całości w zbity dysk w centrum.
         </div>
       </div>
 
@@ -388,11 +399,6 @@
       <div class="kg-toggle-row">
         <span class="label">Pokaż pełną sieć cytowań</span>
         <input type="checkbox" class="kg-check" id="chk-all-lines">
-      </div>
-
-      <div class="kg-toggle-row">
-        <span class="label">Pokaż tła dziedzin</span>
-        <input type="checkbox" class="kg-check" id="chk-zones" checked>
       </div>
 
     </div>

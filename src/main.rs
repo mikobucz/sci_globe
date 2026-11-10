@@ -1,16 +1,16 @@
-//! MathMap Headless Simulation Lab & CLI Diagnostic Runner (`mathmap-cli`).
+//! sci_globe Headless Simulation Lab & CLI Diagnostic Runner (`sci_globe-cli`).
 //!
 //! Usage examples:
-//!   cargo run --release --bin mathmap-cli
-//!   cargo run --release --bin mathmap-cli -- --dataset global --sample 1000 --preset pure --only-connected
-//!   cargo run --release --bin mathmap-cli -- --dataset global --sample 1000 --anchor 0.0 --cohesion 0.35 --nebula 0.4 --ghost 0.45
-//!   cargo run --release --bin mathmap-cli -- --dump-json /tmp/report.json
+//!   cargo run --release --bin sci_globe-cli
+//!   cargo run --release --bin sci_globe-cli -- --dataset global --sample 1000 --preset pure --only-connected
+//!   cargo run --release --bin sci_globe-cli -- --dataset global --sample 1000 --anchor 0.0 --cohesion 0.35 --nebula 0.4 --ghost 0.45
+//!   cargo run --release --bin sci_globe-cli -- --dump-json /tmp/report.json
 
-use mathmap::diagnostics::{
+use sci_globe::diagnostics::{
     analyze_islands, analyze_layout, apply_preset, load_custom_presets_file,
     load_scenario_from_file, run_profiled_simulation,
 };
-use mathmap::engine::SimParams;
+use sci_globe::engine::SimParams;
 use std::env;
 use std::fs;
 
@@ -27,6 +27,7 @@ fn main() {
     let mut show_islands = false;
     let mut min_island_size = 4usize;
     let mut dump_json: Option<String> = None;
+    let mut save_map: Option<String> = None;
 
     let mut params = SimParams::default();
     let mut custom_overrides: Vec<(String, f32)> = Vec::new();
@@ -46,6 +47,36 @@ fn main() {
                     }
                 }
                 return;
+            }
+            "--list-maps" => {
+                println!("\nWYGENEROWANE MAPY (public/generated_maps.json):");
+                println!("========================================================================================================================");
+                if let Ok(content) = fs::read_to_string("public/generated_maps.json") {
+                    if let Ok(maps) = serde_json::from_str::<serde_json::Value>(&content) {
+                        if let Some(arr) = maps.as_array() {
+                            for m in arr {
+                                let id = m.get("id").and_then(|v| v.as_str()).unwrap_or("-");
+                                let name = m.get("name").and_then(|v| v.as_str()).unwrap_or(id);
+                                let pr = m.get("preset").and_then(|v| v.as_str()).unwrap_or("-");
+                                let n = m.get("sampleCount").and_then(|v| v.as_u64()).unwrap_or(0);
+                                let d_seed = m.get("datasetSeed").and_then(|v| v.as_u64()).unwrap_or(0);
+                                let s_seed = m.get("scrambleSeed").and_then(|v| v.as_u64()).unwrap_or(0);
+                                let time = m.get("computeTime").and_then(|v| v.as_str()).unwrap_or("-");
+                                let purity = m.get("metrics").and_then(|x| x.get("knnPurity")).and_then(|v| v.as_str()).unwrap_or("-");
+                                println!(
+                                    "  * [{:<26}] Prace: {:<5} | Preset: {:<16} | DatasetSeed: {:<5} | ScrambleSeed: {:<7} | Czas: {:<7} | KNN: {}",
+                                    name, n, pr, d_seed, s_seed, time, purity
+                                );
+                            }
+                        }
+                    }
+                }
+                println!("========================================================================================================================");
+                return;
+            }
+            "--save-map" if i + 1 < args.len() => {
+                save_map = Some(args[i + 1].clone());
+                i += 2;
             }
             "--dataset" if i + 1 < args.len() => {
                 dataset = Some(args[i + 1].clone());
@@ -160,7 +191,7 @@ fn main() {
 
     println!("================================================================================");
     println!(
-        " MATHMAP HEADLESS SIMULATION LAB | Dataset: {} | Nodes: {} | Edges: {}",
+        " SCI_GLOBE HEADLESS SIMULATION LAB | Dataset: {} | Nodes: {} | Edges: {}",
         file_path,
         scen.nodes.len(),
         scen.universe.edge_u.len()
@@ -388,6 +419,107 @@ fn main() {
         if let Ok(serialized) = serde_json::to_string_pretty(&rep) {
             let _ = fs::write(&json_path, serialized);
             println!("\n[Saved full JSON diagnostic report to {}]", json_path);
+        }
+    }
+
+    if let Some(map_name) = save_map {
+        let elapsed_sec = rep.profile.total_us / 1_000_000.0;
+        let fps = if rep.profile.total_us > 0.0 {
+            (rep.profile.steps_executed as f64) / elapsed_sec
+        } else {
+            0.0
+        };
+        let map_id = format!("map_{}_{}", scen.nodes.len(), final_scramble_seed);
+
+        let mut positions = serde_json::Map::with_capacity(scen.nodes.len());
+        let round6 = |v: f32| -> f64 { ((v as f64) * 1_000_000.0).round() / 1_000_000.0 };
+        for node in &scen.nodes {
+            let idx = node.idx;
+            positions.insert(
+                node.id.clone(),
+                serde_json::json!([
+                    round6(scen.universe.sx[idx]),
+                    round6(scen.universe.sy[idx]),
+                    round6(scen.universe.sz[idx])
+                ]),
+            );
+        }
+
+        let up = &scen.universe.params;
+        let snapshot_rel = format!("generated/{}.json", map_id);
+        let snapshot_disk = format!("public/{}", snapshot_rel);
+        let snapshot_payload = serde_json::json!({
+            "version": 1,
+            "dataset": final_dataset,
+            "sampleCount": scen.nodes.len(),
+            "onlyConnected": final_only_conn,
+            "globeRadius": scen.universe.globe_radius,
+            "params": {
+                "radiusScale": up.radius_scale,
+                "anchorStrength": up.anchor_strength,
+                "subfieldCohesion": up.subfield_cohesion,
+                "ghostAnnealing": up.ghost_annealing,
+                "nebulaRepulsion": up.nebula_repulsion,
+                "nebulaCutoff": up.nebula_cutoff,
+                "centerGravity": up.center_gravity,
+                "giantGravity": up.giant_gravity,
+                "springStiffness": up.spring_stiffness,
+                "degreeNorm": up.degree_norm,
+                "bridgeMult": up.bridge_mult,
+                "springGap": up.spring_gap,
+                "sizeExponent": up.size_exponent,
+                "massExponent": up.mass_exponent,
+                "collisionMargin": up.collision_margin,
+                "globeRadius": scen.universe.globe_radius
+            },
+            "positions": positions
+        });
+
+        let _ = fs::create_dir_all("public/generated");
+        let snapshot_saved = serde_json::to_string(&snapshot_payload)
+            .ok()
+            .and_then(|s| fs::write(&snapshot_disk, s).ok())
+            .is_some();
+
+        let mut new_entry = serde_json::json!({
+            "id": map_id,
+            "name": map_name,
+            "preset": preset,
+            "dataset": final_dataset,
+            "sampleCount": scen.nodes.len(),
+            "datasetSeed": final_ds_seed,
+            "scrambleSeed": final_scramble_seed,
+            "onlyConnected": final_only_conn,
+            "globeRadius": scen.universe.globe_radius,
+            "computeTime": format!("{:.1}s", elapsed_sec),
+            "source": "Terminal CLI (sci_globe-cli)",
+            "timestamp": "CLI run",
+            "metrics": {
+                "knnPurity": format!("{:.1}%", rep.knn_field_purity_pct),
+                "trappedPct": format!("{:.2}%", rep.trapped_pct),
+                "fps": format!("{:.1}", fps)
+            }
+        });
+        if snapshot_saved {
+            if let Some(obj) = new_entry.as_object_mut() {
+                obj.insert("snapshotFile".to_string(), serde_json::Value::String(snapshot_rel));
+            }
+        }
+
+        let mut maps_list: Vec<serde_json::Value> = Vec::new();
+        if let Ok(content) = fs::read_to_string("public/generated_maps.json") {
+            if let Ok(serde_json::Value::Array(arr)) = serde_json::from_str(&content) {
+                maps_list = arr;
+            }
+        }
+        maps_list.retain(|m| m.get("id").and_then(|v| v.as_str()) != Some(&map_id));
+        maps_list.insert(0, new_entry);
+        if let Ok(serialized) = serde_json::to_string_pretty(&maps_list) {
+            let _ = fs::write("public/generated_maps.json", serialized);
+            println!("\n[Zapisano mape do public/generated_maps.json pod nazwa: '{}']", map_name);
+            if snapshot_saved {
+                println!("[Zapisano gotowy stan wspolrzednych do {}]", snapshot_disk);
+            }
         }
     }
 }

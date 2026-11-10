@@ -1,4 +1,4 @@
-//! WebAssembly (`wasm-bindgen`) Bridge and Zero-Copy Memory Pointers for MathMap.
+//! WebAssembly (`wasm-bindgen`) Bridge and Zero-Copy Memory Pointers for sci_globe.
 
 pub mod engine;
 pub mod pbd;
@@ -74,6 +74,10 @@ impl WasmUniverse {
 
     pub fn reheat(&mut self) {
         self.inner.temperature = 1.0;
+    }
+
+    pub fn freeze(&mut self) {
+        self.inner.freeze();
     }
 
     pub fn temperature(&self) -> f32 {

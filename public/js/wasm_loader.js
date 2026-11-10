@@ -1,6 +1,6 @@
-// Zero-Copy WebAssembly Loader & State Manager for MathMap
+// Zero-Copy WebAssembly Loader & State Manager for sci_globe
 
-import init, { WasmUniverse } from '../pkg/mathmap.js';
+import init, { WasmUniverse } from '../pkg/sci_globe.js';
 
 // Deterministic Mulberry32 PRNG for dataset sampling
 export function mulberry32(a) {
@@ -10,6 +10,72 @@ export function mulberry32(a) {
     t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
+}
+
+function extractXYZ(val) {
+  if (Array.isArray(val) && val.length >= 3) {
+    const x = Number(val[0]);
+    const y = Number(val[1]);
+    const z = Number(val[2]);
+    if (Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(z)) {
+      return [x, y, z];
+    }
+  } else if (val && typeof val === 'object') {
+    const x = Number(val.sx ?? val.x);
+    const y = Number(val.sy ?? val.y);
+    const z = Number(val.sz ?? val.z);
+    if (Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(z)) {
+      return [x, y, z];
+    }
+  }
+  return null;
+}
+
+/**
+ * Parses snapshot JSON in any supported shape:
+ * - { positions: { id: [x,y,z] | {x,y,z} | {sx,sy,sz} }, dataset?, globeRadius?, params?, name? }
+ * - { nodes: [{ id, sx/x, sy/y, sz/z }, ...], ... }
+ * - Flat object { "W123": [x, y, z], "W456": { x, y, z }, ... }
+ */
+export function parseSnapshotPayload(raw) {
+  const positionsMap = new Map();
+  const meta = {
+    dataset: undefined,
+    globeRadius: undefined,
+    onlyConnected: undefined,
+    params: undefined,
+    name: undefined,
+  };
+
+  if (!raw || typeof raw !== 'object') {
+    return { positionsMap, meta };
+  }
+
+  if (typeof raw.dataset === 'string') meta.dataset = raw.dataset;
+  if (typeof raw.globeRadius === 'number') meta.globeRadius = raw.globeRadius;
+  if (typeof raw.onlyConnected === 'boolean') meta.onlyConnected = raw.onlyConnected;
+  if (raw.params && typeof raw.params === 'object') meta.params = raw.params;
+  if (typeof raw.name === 'string') meta.name = raw.name;
+
+  if (raw.positions && typeof raw.positions === 'object' && !Array.isArray(raw.positions)) {
+    for (const [id, val] of Object.entries(raw.positions)) {
+      const xyz = extractXYZ(val);
+      if (xyz) positionsMap.set(String(id), xyz);
+    }
+  } else if (Array.isArray(raw.nodes)) {
+    for (const item of raw.nodes) {
+      if (!item || item.id === undefined) continue;
+      const xyz = extractXYZ(item);
+      if (xyz) positionsMap.set(String(item.id), xyz);
+    }
+  } else if (!Array.isArray(raw)) {
+    for (const [id, val] of Object.entries(raw)) {
+      const xyz = extractXYZ(val);
+      if (xyz) positionsMap.set(String(id), xyz);
+    }
+  }
+
+  return { positionsMap, meta };
 }
 
 export class SimBridge {
@@ -98,6 +164,26 @@ export class SimBridge {
       activeList = activeList.filter((n) => connectedSubIds.has(n.id));
     }
 
+    this._uploadActiveListToWasm(activeList, params, isGlobe, null, rng);
+    const scSeed = parseInt(params.scrambleSeed, 10) || 42;
+    this.universe.scramble(scSeed >>> 0, isGlobe);
+  }
+
+  /**
+   * Loads an exact precomputed subset and its 3D spherical coordinates without scrambling or re-simulating.
+   */
+  loadPrecomputedSubset(params, positionsMap, isGlobe) {
+    const activeList = this.allAvailableNodes.filter((n) => positionsMap.has(String(n.id)));
+    this._uploadActiveListToWasm(activeList, params, isGlobe, positionsMap, null);
+    this.universe.freeze();
+    return {
+      loadedCount: activeList.length,
+      requestedCount: positionsMap.size,
+    };
+  }
+
+  _uploadActiveListToWasm(activeList, params, isGlobe, positionLookup = null, rng = null) {
+    const rand = rng || mulberry32(params.datasetSeed || 1337);
     this.nodeMap.clear();
     const fieldMap = new Map();
     this.zones.forEach((z, idx) => fieldMap.set(z.id, idx));
@@ -124,15 +210,16 @@ export class SimBridge {
       const x0 =
         raw.initX !== undefined && Math.abs(raw.initX) < 1000
           ? raw.initX
-          : (rng() - 0.5) * 300;
+          : (rand() - 0.5) * 300;
       const y0 =
         raw.initY !== undefined && Math.abs(raw.initY) < 1000
           ? raw.initY
-          : (rng() - 0.5) * 300;
+          : (rand() - 0.5) * 300;
 
-      let sx0 = raw.sx !== undefined ? raw.sx : (rng() - 0.5) * 2;
-      let sy0 = raw.sy !== undefined ? raw.sy : (rng() - 0.5) * 2;
-      let sz0 = raw.sz !== undefined ? raw.sz : (rng() - 0.5) * 2;
+      const pre = positionLookup ? positionLookup.get(String(raw.id)) : null;
+      let sx0 = pre ? pre[0] : raw.sx !== undefined ? raw.sx : (rand() - 0.5) * 2;
+      let sy0 = pre ? pre[1] : raw.sy !== undefined ? raw.sy : (rand() - 0.5) * 2;
+      let sz0 = pre ? pre[2] : raw.sz !== undefined ? raw.sz : (rand() - 0.5) * 2;
       const len = Math.hypot(sx0, sy0, sz0) || 1;
       sx0 /= len;
       sy0 /= len;
@@ -208,8 +295,17 @@ export class SimBridge {
       edgeV,
       edgeW
     );
-    const scSeed = parseInt(params.scrambleSeed, 10) || 42;
-    this.universe.scramble(scSeed >>> 0, isGlobe);
+  }
+
+  exportPositionsObject() {
+    const views = this.getViews();
+    const out = {};
+    const round6 = (v) => Math.round(v * 1e6) / 1e6;
+    for (let i = 0; i < this.nodes.length; i++) {
+      const id = this.nodes[i].id;
+      out[id] = [round6(views.sx[i]), round6(views.sy[i]), round6(views.sz[i])];
+    }
+    return out;
   }
 
   syncAllParams(params) {

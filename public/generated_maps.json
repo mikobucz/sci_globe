@@ -1,0 +1,22 @@
+[
+  {
+    "computeTime": "32.7s",
+    "dataset": "global",
+    "datasetSeed": 1337,
+    "globeRadius": 660.0,
+    "id": "map_4000_42",
+    "metrics": {
+      "fps": "28.1",
+      "knnPurity": "82.5%",
+      "trappedPct": "3.28%"
+    },
+    "name": "Global 4k (test 4)",
+    "onlyConnected": true,
+    "preset": "test 4",
+    "sampleCount": 4000,
+    "scrambleSeed": 42,
+    "snapshotFile": "generated/map_4000_42.json",
+    "source": "Terminal CLI (mathmap-cli)",
+    "timestamp": "CLI run"
+  }
+]

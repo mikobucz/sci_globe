@@ -1,6 +1,6 @@
 // User Interface, Kittens Game Controls, Camera, and Main Simulation Loop
 
-import { SimBridge, mulberry32 } from './wasm_loader.js';
+import { SimBridge, mulberry32, parseSnapshotPayload } from './wasm_loader.js';
 import {
   AtlasRenderer,
   projectSphere,
@@ -16,7 +16,9 @@ const statusDot = document.getElementById('status-dot');
 const statusText = document.getElementById('status-text');
 const nodeCountEl = document.getElementById('node-count');
 const coordsReadout = document.getElementById('coords-readout');
-const btnViewToggle = document.getElementById('btn-view-toggle');
+const btnToggleSaved = document.getElementById('btn-toggle-saved');
+const btnCloseSaved = document.getElementById('btn-close-saved');
+const drawerSaved = document.getElementById('drawer-saved');
 const btnToggleOptions = document.getElementById('btn-toggle-options');
 const btnCloseSidebar = document.getElementById('btn-close-sidebar');
 
@@ -24,7 +26,6 @@ const bridge = new SimBridge();
 const renderer = new AtlasRenderer(canvas);
 
 const state = {
-  viewMode: 'GLOBE',
   globeRotation: { x: 0.35, y: -0.2, targetX: null, targetY: null },
   camera: {
     x: 0,
@@ -48,7 +49,7 @@ const state = {
     ghostAnnealing: 0.1,
     nebulaRepulsion: 0.0,
     nebulaCutoff: 0.45,
-    centerGravity: 0.0012,
+    centerGravity: 0.0,
     giantGravity: 0.0,
     springStiffness: 0.035,
     degreeNorm: 0.55,
@@ -65,14 +66,12 @@ const state = {
   draggedNode: null,
   isSimRunning: true,
   isPaused: false,
+  simStartTime: Date.now(),
 };
 
 let isPanning = false;
-let dragStartX = 0;
-let dragStartY = 0;
 let lastMouseX = 0;
 let lastMouseY = 0;
-let growthInterval = null;
 
 async function boot() {
   renderer.resize();
@@ -83,8 +82,8 @@ async function boot() {
 
   setupEventListeners();
   setupSidebarBindings();
+  setupSavedMapsBindings();
   syncInputsWithParams();
-  updateViewToggleBtn();
 
   requestAnimationFrame(mainLoop);
 }
@@ -96,12 +95,7 @@ async function loadDataset(datasetName) {
 }
 
 function rebuildActiveSubset() {
-  if (growthInterval) {
-    clearInterval(growthInterval);
-    growthInterval = null;
-  }
-  const isGlobe = state.viewMode === 'GLOBE';
-  bridge.rebuildSubset(state.params, isGlobe);
+  bridge.rebuildSubset(state.params, true);
   nodeCountEl.innerText = `${bridge.nodes.length.toLocaleString()} prac`;
   markSimActive();
 }
@@ -109,24 +103,22 @@ function rebuildActiveSubset() {
 function markSimActive() {
   bridge.universe.reheat();
   state.isSimRunning = true;
+  state.simStartTime = Date.now();
   statusDot.className = 'status-dot';
   statusText.innerText = 'Aktywna (Wasm)';
 }
 
-function updateViewToggleBtn() {
-  if (state.viewMode === 'GLOBE') {
-    btnViewToggle.innerText = '[ Widok: Glob 3D | Przełącz na 2D ]';
-  } else {
-    btnViewToggle.innerText = '[ Widok: Płaski 2D | Przełącz na Glob 3D ]';
-  }
+function markSimFrozen(label = 'Ustabilizowana (gotowy stan)') {
+  state.isSimRunning = false;
+  statusDot.className = 'status-dot frozen';
+  statusText.innerText = label;
 }
 
 function resetCameraView() {
   state.camera.targetX = window.innerWidth / 2;
   state.camera.targetY = window.innerHeight / 2;
   const minDim = Math.min(window.innerWidth, window.innerHeight);
-  state.camera.targetScale =
-    state.viewMode === 'GLOBE' ? minDim / 1420 : minDim / 1850;
+  state.camera.targetScale = minDim / 1420;
   state.camera.x = state.camera.targetX;
   state.camera.y = state.camera.targetY;
   state.camera.scale = state.camera.targetScale;
@@ -140,92 +132,17 @@ function scrambleConfetti(rollNewSeed = true) {
     seedInput.value = seedVal;
     state.params.scrambleSeed = seedVal;
   }
-  bridge.universe.scramble(seedVal >>> 0, state.viewMode === 'GLOBE');
-  markSimActive();
-}
-
-function growOrganically() {
-  if (growthInterval) {
-    clearInterval(growthInterval);
-    growthInterval = null;
-  }
-  if (state.viewMode === 'GLOBE') {
-    state.viewMode = '2D';
-    updateViewToggleBtn();
-    bridge.universe.set_view_mode(false);
-    resetCameraView();
-  }
-
-  const seedVal =
-    parseInt(document.getElementById('input-scramble-seed').value, 10) || 42;
-  const rng = mulberry32(seedVal);
-  const sorted = [...bridge.nodes].sort((a, b) => b.citations - a.citations);
-  const topCount = Math.min(25, sorted.length);
-
-  sorted.forEach((n, idx) => {
-    if (idx < topCount) {
-      const a = (idx / topCount) * Math.PI * 2;
-      const rad = 40 + rng() * 100;
-      bridge.universe.move_node_2d(n.idx, Math.cos(a) * rad, Math.sin(a) * rad);
-    } else {
-      bridge.universe.move_node_2d(n.idx, 99999, 99999);
-    }
-  });
-
-  let curIdx = topCount;
-  growthInterval = setInterval(() => {
-    if (curIdx >= sorted.length) {
-      clearInterval(growthInterval);
-      growthInterval = null;
-      return;
-    }
-    const views = bridge.getViews();
-    const batch = Math.min(30, sorted.length - curIdx);
-    for (let b = 0; b < batch; b++) {
-      const n = sorted[curIdx++];
-      const parentId = n.connections.find((id) => {
-        const p = bridge.nodeMap.get(id);
-        return p && views.x[p.idx] < 50000;
-      });
-      const parent = parentId ? bridge.nodeMap.get(parentId) : null;
-      if (parent) {
-        const ang = rng() * Math.PI * 2;
-        const dist = views.r[parent.idx] + views.r[n.idx] + 4;
-        bridge.universe.move_node_2d(
-          n.idx,
-          views.x[parent.idx] + Math.cos(ang) * dist,
-          views.y[parent.idx] + Math.sin(ang) * dist
-        );
-      } else {
-        const ang = rng() * Math.PI * 2;
-        const dist = 180 + rng() * 120;
-        bridge.universe.move_node_2d(
-          n.idx,
-          Math.cos(ang) * dist,
-          Math.sin(ang) * dist
-        );
-      }
-    }
-    markSimActive();
-  }, 50);
-
+  bridge.universe.scramble(seedVal >>> 0, true);
   markSimActive();
 }
 
 function setupSidebarBindings() {
   btnToggleOptions.addEventListener('click', () => {
     sidebar.classList.toggle('open');
+    if (drawerSaved) drawerSaved.classList.remove('open');
   });
   btnCloseSidebar.addEventListener('click', () => {
     sidebar.classList.remove('open');
-  });
-
-  btnViewToggle.addEventListener('click', () => {
-    state.viewMode = state.viewMode === 'GLOBE' ? '2D' : 'GLOBE';
-    updateViewToggleBtn();
-    bridge.universe.set_view_mode(state.viewMode === 'GLOBE');
-    resetCameraView();
-    markSimActive();
   });
 
   document.getElementById('select-dataset').addEventListener('change', async (e) => {
@@ -258,6 +175,7 @@ function setupSidebarBindings() {
   const bindPair = (sliderId, numId, paramKey, isInteger = false) => {
     const slider = document.getElementById(sliderId);
     const numInput = document.getElementById(numId);
+    if (!slider || !numInput) return;
 
     slider.addEventListener('input', (e) => {
       const val = isInteger
@@ -297,7 +215,6 @@ function setupSidebarBindings() {
   bindPair('p-ghost', 'num-ghost', 'ghostAnnealing');
   bindPair('p-nebula', 'num-nebula', 'nebulaRepulsion');
   bindPair('p-nebula-cut', 'num-nebula-cut', 'nebulaCutoff');
-  bindPair('p-center', 'num-center', 'centerGravity');
   bindPair('p-giant', 'num-giant', 'giantGravity');
   bindPair('p-spring', 'num-spring', 'springStiffness');
   bindPair('p-deg-norm', 'num-deg-norm', 'degreeNorm');
@@ -307,12 +224,18 @@ function setupSidebarBindings() {
   bindPair('p-mass', 'num-mass', 'massExponent');
   bindPair('p-margin', 'num-margin', 'collisionMargin');
 
-  document.getElementById('chk-all-lines').addEventListener('change', (e) => {
-    state.params.showAllLines = e.target.checked;
-  });
-  document.getElementById('chk-zones').addEventListener('change', (e) => {
-    state.params.showZones = e.target.checked;
-  });
+  const chkAllLines = document.getElementById('chk-all-lines');
+  if (chkAllLines) {
+    chkAllLines.addEventListener('change', (e) => {
+      state.params.showAllLines = e.target.checked;
+    });
+  }
+  const chkZones = document.getElementById('chk-zones');
+  if (chkZones) {
+    chkZones.addEventListener('change', (e) => {
+      state.params.showZones = e.target.checked;
+    });
+  }
 
   document
     .getElementById('btn-scramble')
@@ -326,7 +249,6 @@ function setupSidebarBindings() {
     });
   }
 
-  document.getElementById('btn-grow').addEventListener('click', growOrganically);
   document.getElementById('btn-reheat').addEventListener('click', markSimActive);
 
   const btnPause = document.getElementById('btn-pause');
@@ -396,10 +318,12 @@ function setupSidebarBindings() {
   const btnSavePreset = document.getElementById('btn-save-preset');
   const btnDeletePreset = document.getElementById('btn-delete-preset');
 
-  const STORAGE_KEY = 'mathmap_custom_presets_v1';
+  const STORAGE_KEY = 'sci_globe_custom_presets_v1';
   let customPresets = {};
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw =
+      localStorage.getItem(STORAGE_KEY) ||
+      localStorage.getItem('mathmap_custom_presets_v1');
     if (raw) customPresets = JSON.parse(raw) || {};
   } catch (_) {
     customPresets = {};
@@ -594,6 +518,8 @@ function setupSidebarBindings() {
 
 function syncInputsWithParams() {
   const p = state.params;
+  const selDs = document.getElementById('select-dataset');
+  if (selDs && p.dataset) selDs.value = p.dataset;
   const setVal = (sliderId, numId, val) => {
     const s = document.getElementById(sliderId);
     const n = document.getElementById(numId);
@@ -619,7 +545,6 @@ function syncInputsWithParams() {
   setVal('p-ghost', 'num-ghost', p.ghostAnnealing);
   setVal('p-nebula', 'num-nebula', p.nebulaRepulsion);
   setVal('p-nebula-cut', 'num-nebula-cut', p.nebulaCutoff || 0.45);
-  setVal('p-center', 'num-center', p.centerGravity);
   setVal('p-giant', 'num-giant', p.giantGravity);
   setVal('p-spring', 'num-spring', p.springStiffness);
   setVal('p-deg-norm', 'num-deg-norm', p.degreeNorm);
@@ -629,6 +554,306 @@ function syncInputsWithParams() {
   setVal('p-mass', 'num-mass', p.massExponent);
   setVal('p-margin', 'num-margin', p.collisionMargin);
   setVal('p-speed', 'num-speed', p.simSpeed);
+}
+
+function setupSavedMapsBindings() {
+  if (btnToggleSaved) {
+    btnToggleSaved.addEventListener('click', () => {
+      drawerSaved.classList.toggle('open');
+      if (drawerSaved.classList.contains('open')) {
+        sidebar.classList.remove('open');
+        loadGeneratedMaps();
+      }
+    });
+  }
+  if (btnCloseSaved) {
+    btnCloseSaved.addEventListener('click', () => {
+      drawerSaved.classList.remove('open');
+    });
+  }
+
+  const btnSaveSnapshot = document.getElementById('btn-save-current-snapshot');
+  const inputSnapshotName = document.getElementById('input-save-snapshot-name');
+  if (btnSaveSnapshot) {
+    btnSaveSnapshot.addEventListener('click', async () => {
+      const selectPreset = document.getElementById('select-preset');
+      const prName = selectPreset ? selectPreset.value.replace('custom:', '') : 'własny';
+      const name =
+        (inputSnapshotName.value || '').trim() ||
+        `Globus ${bridge.nodes.length} prac (${prName})`;
+
+      const elapsedSec = Math.max(1, Math.round((Date.now() - state.simStartTime) / 1000));
+      const mapId = `web_${bridge.nodes.length}_${state.params.scrambleSeed}_${Date.now() % 10000}`;
+      const positions = bridge.exportPositionsObject();
+
+      const mapEntry = {
+        id: mapId,
+        name,
+        preset: prName,
+        dataset: state.params.dataset,
+        sampleCount: bridge.nodes.length,
+        datasetSeed: state.params.datasetSeed,
+        scrambleSeed: state.params.scrambleSeed,
+        onlyConnected: state.params.onlyConnected,
+        globeRadius: state.params.globeRadius,
+        computeTime: `${elapsedSec}s (przeglądarka)`,
+        source: 'Web UI',
+        timestamp: new Date().toISOString().replace('T', ' ').substring(0, 16),
+        params: { ...state.params },
+        snapshot: {
+          version: 1,
+          dataset: state.params.dataset,
+          sampleCount: bridge.nodes.length,
+          onlyConnected: state.params.onlyConnected,
+          globeRadius: state.params.globeRadius,
+          params: { ...state.params },
+          positions,
+        },
+      };
+
+      const prevText = btnSaveSnapshot.innerText;
+      btnSaveSnapshot.innerText = '[ zapisywanie... ]';
+      try {
+        await fetch('/api/generated_maps', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(mapEntry),
+        });
+        if (inputSnapshotName) inputSnapshotName.value = '';
+        await loadGeneratedMaps();
+      } catch (err) {
+        console.error('Błąd zapisu mapy:', err);
+      } finally {
+        btnSaveSnapshot.innerText = prevText;
+      }
+    });
+  }
+
+  const btnImportSnapshot = document.getElementById('btn-import-snapshot');
+  const inputImportSnapshot = document.getElementById('input-import-snapshot');
+  const importStatus = document.getElementById('import-snapshot-status');
+  if (btnImportSnapshot && inputImportSnapshot) {
+    btnImportSnapshot.addEventListener('click', () => {
+      inputImportSnapshot.value = '';
+      inputImportSnapshot.click();
+    });
+    inputImportSnapshot.addEventListener('change', async (e) => {
+      const file = e.target.files && e.target.files[0];
+      if (!file) return;
+      try {
+        if (importStatus) importStatus.innerText = 'Wczytywanie...';
+        const text = await file.text();
+        const rawJson = JSON.parse(text);
+        const result = await applySnapshotPayload(rawJson, { name: file.name });
+        if (importStatus) {
+          importStatus.innerText = `Załadowano ${result.loadedCount} prac`;
+        }
+        if (drawerSaved) drawerSaved.classList.remove('open');
+      } catch (err) {
+        console.error('Błąd importu pliku współrzędnych:', err);
+        if (importStatus) {
+          importStatus.innerText = err.message || 'Błąd pliku JSON';
+        }
+      }
+    });
+  }
+}
+
+async function loadGeneratedMaps() {
+  const container = document.getElementById('saved-maps-list');
+  if (!container) return;
+
+  try {
+    const res = await fetch(`generated_maps.json?_t=${Date.now()}`);
+    if (!res.ok) throw new Error('Brak pliku');
+    const maps = await res.json();
+    renderGeneratedMapsList(maps);
+  } catch (err) {
+    container.innerHTML = `<div style="font-size:12px; color:#8c92a0; padding:10px;">Brak zapisanych map lub błąd odczytu.</div>`;
+  }
+}
+
+function renderGeneratedMapsList(maps) {
+  const container = document.getElementById('saved-maps-list');
+  if (!container) return;
+
+  if (!maps || maps.length === 0) {
+    container.innerHTML = `<div style="font-size:12px; color:#8c92a0; padding:10px;">Brak zapisanych map. Użyj 'sci_globe-cli --save-map' w terminalu lub przycisku 'zapisz stan' powyżej.</div>`;
+    return;
+  }
+
+  container.innerHTML = '';
+  maps.forEach((m) => {
+    const card = document.createElement('div');
+    card.className = 'saved-map-card';
+
+    const knnBadge = m.metrics?.knnPurity ? `<div>KNN: <strong>${m.metrics.knnPurity}</strong></div>` : '';
+    const fpsBadge = m.metrics?.fps ? `<div>Szybkość: <strong>${m.metrics.fps} FPS</strong></div>` : '';
+    const hasSnapshot = Boolean(m.snapshotFile);
+    const stateBadge = hasSnapshot
+      ? `<span class="saved-map-badge" style="color:#3fb950; background:rgba(63,185,80,0.14);">✓ Gotowy stan</span>`
+      : `<span class="saved-map-badge" style="color:#8c92a0; background:rgba(140,146,160,0.14);">Tylko seedy</span>`;
+
+    const dsSeed = m.datasetSeed ?? m.params?.datasetSeed ?? '-';
+    const scSeed = m.scrambleSeed ?? m.params?.scrambleSeed ?? '-';
+    const dsLabel = `${m.dataset || m.params?.dataset || 'global'}${(m.onlyConnected ?? m.params?.onlyConnected) ? ' (połączone)' : ''}`;
+
+    card.innerHTML = `
+      <div class="saved-map-title">
+        <span>${m.name}</span>
+        <div style="display:flex; gap:6px; align-items:center;">
+          ${stateBadge}
+          <span class="saved-map-badge">${(m.sampleCount || 0).toLocaleString()} prac</span>
+        </div>
+      </div>
+      <div class="saved-map-meta">
+        <div>Preset: <strong>${m.preset || 'brak'}</strong></div>
+        <div>Zbiór: <strong>${dsLabel}</strong></div>
+        <div>Seed wyboru (Dataset): <strong style="color:#d2a8ff;">${dsSeed}</strong></div>
+        <div>Seed startu (Scramble): <strong style="color:#d2a8ff;">${scSeed}</strong></div>
+        <div>Czas: <strong>${m.computeTime || '-'}</strong></div>
+        <div>Źródło: <strong>${m.source || '-'}</strong></div>
+        ${knnBadge}
+        ${fpsBadge}
+      </div>
+      <div class="saved-map-actions">
+        ${hasSnapshot ? `<a class="kg-text-btn" href="${m.snapshotFile}" download="${m.id}.json" style="text-decoration:none;">[ pobierz .json ]</a>` : ''}
+        <button class="kg-text-btn btn-apply-saved-map">${hasSnapshot ? '[ wczytaj od razu ]' : '[ przelicz z seedów ]'}</button>
+        <button class="kg-text-btn btn-delete-saved-map" style="color:#f85149;">[ usuń ]</button>
+      </div>
+    `;
+
+    const btnApply = card.querySelector('.btn-apply-saved-map');
+    btnApply.addEventListener('click', async () => {
+      const prevLabel = btnApply.innerText;
+      btnApply.innerText = '[ wczytywanie... ]';
+      try {
+        await applyGeneratedMap(m);
+        if (drawerSaved) drawerSaved.classList.remove('open');
+      } catch (err) {
+        console.error('Błąd wczytywania mapy:', err);
+        btnApply.innerText = '[ błąd wczytania ]';
+        return;
+      }
+      btnApply.innerText = prevLabel;
+    });
+
+    card.querySelector('.btn-delete-saved-map').addEventListener('click', async () => {
+      try {
+        await fetch(`/api/generated_maps?id=${encodeURIComponent(m.id)}`, { method: 'DELETE' });
+        await loadGeneratedMaps();
+      } catch (err) {
+        console.error(err);
+      }
+    });
+
+    container.appendChild(card);
+  });
+}
+
+async function ensureDatasetLoaded(targetDataset) {
+  if (targetDataset && targetDataset !== state.params.dataset) {
+    state.params.dataset = targetDataset;
+    await bridge.loadDatasetFile(targetDataset);
+  }
+}
+
+async function applySnapshotPayload(rawJson, fallbackMeta = {}) {
+  const { positionsMap, meta } = parseSnapshotPayload(rawJson);
+  if (positionsMap.size === 0) {
+    throw new Error('Brak poprawnych współrzędnych (id -> x,y,z) w pliku.');
+  }
+
+  const targetDataset = meta.dataset || fallbackMeta.dataset;
+  if (targetDataset) {
+    await ensureDatasetLoaded(targetDataset);
+  } else {
+    // Auto-detect dataset if none of the IDs match the currently loaded dataset
+    const matchesCurrent = bridge.allAvailableNodes.some((n) => positionsMap.has(String(n.id)));
+    if (!matchesCurrent) {
+      const altDataset = state.params.dataset === 'math' ? 'global' : 'math';
+      await ensureDatasetLoaded(altDataset);
+    }
+  }
+
+  if (meta.params) {
+    Object.assign(state.params, meta.params);
+  }
+  if (fallbackMeta.params) {
+    Object.assign(state.params, fallbackMeta.params);
+  }
+  if (meta.globeRadius !== undefined) state.params.globeRadius = meta.globeRadius;
+  if (meta.onlyConnected !== undefined) state.params.onlyConnected = meta.onlyConnected;
+
+  const res = bridge.loadPrecomputedSubset(state.params, positionsMap, true);
+  if (res.loadedCount === 0) {
+    throw new Error('Żadne ID pracy z pliku nie pasuje do wybranego zbioru danych.');
+  }
+  state.params.sampleCount = res.loadedCount;
+
+  syncInputsWithParams();
+  nodeCountEl.innerText = `${bridge.nodes.length.toLocaleString()} prac`;
+  markSimFrozen();
+  resetCameraView();
+  return res;
+}
+
+async function applyGeneratedMap(mapData) {
+  const selectPreset = document.getElementById('select-preset');
+  const btnDeletePreset = document.getElementById('btn-delete-preset');
+
+  if (mapData.snapshotFile) {
+    if (mapData.preset && selectPreset) {
+      const opt = Array.from(selectPreset.options).find(
+        (o) => o.value === mapData.preset || o.value === `custom:${mapData.preset}`
+      );
+      if (opt) {
+        selectPreset.value = opt.value;
+        if (btnDeletePreset) {
+          btnDeletePreset.style.display = opt.value.startsWith('custom:') ? 'inline' : 'none';
+        }
+      }
+    }
+    if (mapData.datasetSeed !== undefined) state.params.datasetSeed = mapData.datasetSeed;
+    if (mapData.scrambleSeed !== undefined) state.params.scrambleSeed = mapData.scrambleSeed;
+    if (mapData.globeRadius !== undefined) state.params.globeRadius = mapData.globeRadius;
+    if (mapData.onlyConnected !== undefined) state.params.onlyConnected = mapData.onlyConnected;
+
+    const resp = await fetch(`${mapData.snapshotFile}?_t=${Date.now()}`);
+    if (!resp.ok) {
+      throw new Error(`Nie udało się pobrać snapshotu: ${mapData.snapshotFile}`);
+    }
+    const rawJson = await resp.json();
+    await applySnapshotPayload(rawJson, mapData);
+    return;
+  }
+
+  await ensureDatasetLoaded(mapData.dataset || state.params.dataset);
+
+  if (mapData.preset && selectPreset) {
+    let opt = Array.from(selectPreset.options).find(
+      (o) => o.value === mapData.preset || o.value === `custom:${mapData.preset}`
+    );
+    if (opt) {
+      selectPreset.value = opt.value;
+      selectPreset.dispatchEvent(new Event('change'));
+    }
+  }
+
+  if (mapData.params) {
+    Object.assign(state.params, mapData.params);
+  }
+
+  if (mapData.datasetSeed !== undefined) state.params.datasetSeed = mapData.datasetSeed;
+  if (mapData.scrambleSeed !== undefined) state.params.scrambleSeed = mapData.scrambleSeed;
+  if (mapData.sampleCount !== undefined) state.params.sampleCount = mapData.sampleCount;
+  if (mapData.globeRadius !== undefined) state.params.globeRadius = mapData.globeRadius;
+  if (mapData.onlyConnected !== undefined) state.params.onlyConnected = mapData.onlyConnected;
+
+  syncInputsWithParams();
+  rebuildActiveSubset();
+  scrambleConfetti(false);
+  resetCameraView();
 }
 
 function setupEventListeners() {
@@ -645,8 +870,6 @@ function setupEventListeners() {
     }
 
     isPanning = true;
-    dragStartX = e.clientX - state.camera.x;
-    dragStartY = e.clientY - state.camera.y;
   });
 
   window.addEventListener('mouseup', () => {
@@ -664,41 +887,26 @@ function setupEventListeners() {
     lastMouseY = e.clientY;
 
     if (state.draggedNode) {
-      if (state.viewMode === 'GLOBE') {
-        const sp = unprojectScreenToSphere(
-          e.clientX,
-          e.clientY,
-          state.globeRotation,
-          state.camera,
-          state.params.globeRadius || 660
-        );
-        bridge.universe.move_node_3d(state.draggedNode.idx, sp.sx, sp.sy, sp.sz);
-      } else {
-        const wx = (e.clientX - state.camera.x) / state.camera.scale;
-        const wy = (e.clientY - state.camera.y) / state.camera.scale;
-        bridge.universe.move_node_2d(state.draggedNode.idx, wx, wy);
-      }
+      const sp = unprojectScreenToSphere(
+        e.clientX,
+        e.clientY,
+        state.globeRotation,
+        state.camera,
+        state.params.globeRadius || 660
+      );
+      bridge.universe.move_node_3d(state.draggedNode.idx, sp.sx, sp.sy, sp.sz);
       return;
     }
 
     if (isPanning) {
-      if (state.viewMode === 'GLOBE') {
-        state.globeRotation.y += dx * 0.006;
-        state.globeRotation.x += dy * 0.006;
-        state.globeRotation.x = Math.max(
-          -Math.PI / 2.1,
-          Math.min(Math.PI / 2.1, state.globeRotation.x)
-        );
-        tooltip.style.display = 'none';
-        return;
-      } else {
-        state.camera.x = e.clientX - dragStartX;
-        state.camera.y = e.clientY - dragStartY;
-        state.camera.targetX = state.camera.x;
-        state.camera.targetY = state.camera.y;
-        tooltip.style.display = 'none';
-        return;
-      }
+      state.globeRotation.y += dx * 0.006;
+      state.globeRotation.x += dy * 0.006;
+      state.globeRotation.x = Math.max(
+        -Math.PI / 2.1,
+        Math.min(Math.PI / 2.1, state.globeRotation.x)
+      );
+      tooltip.style.display = 'none';
+      return;
     }
 
     const found = findNodeAtScreen(e.clientX, e.clientY);
@@ -754,31 +962,18 @@ function setupEventListeners() {
 function findNodeAtScreen(clientX, clientY) {
   const views = bridge.getViews();
   const nodes = bridge.nodes;
-  if (state.viewMode === 'GLOBE') {
-    for (let i = nodes.length - 1; i >= 0; i--) {
-      const p = projectSphere(
-        views.sx[i],
-        views.sy[i],
-        views.sz[i],
-        state.globeRotation,
-        state.camera,
-        state.params.globeRadius || 660
-      );
-      if (p.depth > -0.15) {
-        const rPx = Math.max(3, views.r[i] * state.camera.scale);
-        if (Math.hypot(p.x - clientX, p.y - clientY) <= rPx + 3) {
-          return nodes[i];
-        }
-      }
-    }
-  } else {
-    const wx = (clientX - state.camera.x) / state.camera.scale;
-    const wy = (clientY - state.camera.y) / state.camera.scale;
-    for (let i = nodes.length - 1; i >= 0; i--) {
-      if (
-        views.x[i] < 50000 &&
-        Math.hypot(views.x[i] - wx, views.y[i] - wy) <= views.r[i] + 2
-      ) {
+  for (let i = nodes.length - 1; i >= 0; i--) {
+    const p = projectSphere(
+      views.sx[i],
+      views.sy[i],
+      views.sz[i],
+      state.globeRotation,
+      state.camera,
+      state.params.globeRadius || 660
+    );
+    if (p.depth > -0.15) {
+      const rPx = Math.max(3, views.r[i] * state.camera.scale);
+      if (Math.hypot(p.x - clientX, p.y - clientY) <= rPx + 3) {
         return nodes[i];
       }
     }
@@ -822,12 +1017,6 @@ function selectNode(n) {
 }
 
 function flyToLatLon(latDeg, lonDeg) {
-  if (state.viewMode !== 'GLOBE') {
-    state.viewMode = 'GLOBE';
-    updateViewToggleBtn();
-    bridge.universe.set_view_mode(true);
-    resetCameraView();
-  }
   const latRad = (latDeg * Math.PI) / 180;
   const lonRad = (lonDeg * Math.PI) / 180;
   state.globeRotation.targetX = -latRad;
@@ -838,16 +1027,11 @@ function flyToNode(n) {
   if (!n) return;
   selectNode(n);
   const views = bridge.getViews();
-  if (state.viewMode === 'GLOBE') {
-    const sx = views.sx[n.idx];
-    const sy = Math.max(-1, Math.min(1, views.sy[n.idx]));
-    const sz = views.sz[n.idx];
-    state.globeRotation.targetX = -Math.asin(sy);
-    state.globeRotation.targetY = Math.atan2(sx, sz);
-  } else {
-    state.camera.targetX = window.innerWidth / 2 - views.x[n.idx] * state.camera.scale;
-    state.camera.targetY = window.innerHeight / 2 - views.y[n.idx] * state.camera.scale;
-  }
+  const sx = views.sx[n.idx];
+  const sy = Math.max(-1, Math.min(1, views.sy[n.idx]));
+  const sz = views.sz[n.idx];
+  state.globeRotation.targetX = -Math.asin(sy);
+  state.globeRotation.targetY = Math.atan2(sx, sz);
 }
 
 function mainLoop() {
@@ -880,7 +1064,7 @@ function mainLoop() {
     }
   }
 
-  if (coordsReadout && state.viewMode === 'GLOBE') {
+  if (coordsReadout) {
     const latCenter = (-state.globeRotation.x * 180) / Math.PI;
     let lonCenter = ((state.globeRotation.y * 180) / Math.PI) % 360;
     if (lonCenter > 180) lonCenter -= 360;

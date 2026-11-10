@@ -4,6 +4,7 @@
 export class WasmUniverse {
     free(): void;
     [Symbol.dispose](): void;
+    freeze(): void;
     load_graph(init_x: Float32Array | number[], init_y: Float32Array | number[], init_sx: Float32Array | number[], init_sy: Float32Array | number[], init_sz: Float32Array | number[], anchor_x: Float32Array | number[], anchor_y: Float32Array | number[], anchor_sx: Float32Array | number[], anchor_sy: Float32Array | number[], anchor_sz: Float32Array | number[], citations: Float32Array | number[], field_idx: Uint16Array | number[], edge_u: Uint32Array | number[], edge_v: Uint32Array | number[], edge_weight: Float32Array | number[]): void;
     move_node_2d(idx: number, x: number, y: number): void;
     move_node_3d(idx: number, sx: number, sy: number, sz: number): void;
@@ -29,6 +30,7 @@ export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembl
 export interface InitOutput {
     readonly memory: WebAssembly.Memory;
     readonly __wbg_wasmuniverse_free: (a: number, b: number) => void;
+    readonly wasmuniverse_freeze: (a: number) => void;
     readonly wasmuniverse_load_graph: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number, r: number, s: number, t: number, u: number, v: number, w: number, x: number, y: number, z: number, a1: number, b1: number, c1: number, d1: number, e1: number) => void;
     readonly wasmuniverse_move_node_2d: (a: number, b: number, c: number, d: number) => void;
     readonly wasmuniverse_move_node_3d: (a: number, b: number, c: number, d: number, e: number) => void;

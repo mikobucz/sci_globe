@@ -78,7 +78,7 @@ def fetch_field_papers(field_id, target_count=1250):
             f"&select=id,doi,title,publication_year,cited_by_count,primary_topic,referenced_works"
         )
         
-        req = urllib.request.Request(url, headers={'User-Agent': 'mailto:mathmap@example.org'})
+        req = urllib.request.Request(url, headers={'User-Agent': 'mailto:sci_globe@example.org'})
         try:
             with urllib.request.urlopen(req, timeout=25) as resp:
                 data = json.loads(resp.read().decode('utf-8'))

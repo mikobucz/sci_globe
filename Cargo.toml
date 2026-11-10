@@ -1,17 +1,17 @@
 [package]
-name = "mathmap"
+name = "sci_globe"
 version = "0.2.0"
 edition = "2021"
-authors = ["MathMap System Engineering"]
+authors = ["sci_globe System Engineering"]
 description = "Ultra-high-performance SoA Force-Directed & Spherical Riemann Graph Simulation Engine in Rust + WebAssembly"
 
 [lib]
-name = "mathmap"
+name = "sci_globe"
 path = "src/lib.rs"
 crate-type = ["cdylib", "rlib"]
 
 [[bin]]
-name = "mathmap-cli"
+name = "sci_globe-cli"
 path = "src/main.rs"
 
 [dependencies]

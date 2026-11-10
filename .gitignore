@@ -20,6 +20,11 @@ reports/
 # Temporary diagnostic dumps
 /reports/*.json
 
+# Unused banner variant and local map snapshots (keep the 4k demo snapshot)
+assets/banner_futura.png
+public/generated/*.json
+!public/generated/map_4000_42.json
+
 # macOS & IDE
 .DS_Store
 .idea/

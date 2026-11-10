@@ -1,18 +1,18 @@
 {
-  "name": "mathmap",
+  "name": "sci_globe",
   "type": "module",
   "collaborators": [
-    "MathMap System Engineering"
+    "sci_globe System Engineering"
   ],
   "description": "Ultra-high-performance SoA Force-Directed & Spherical Riemann Graph Simulation Engine in Rust + WebAssembly",
   "version": "0.2.0",
   "files": [
-    "mathmap_bg.wasm",
-    "mathmap.js",
-    "mathmap.d.ts"
+    "sci_globe_bg.wasm",
+    "sci_globe.js",
+    "sci_globe.d.ts"
   ],
-  "main": "mathmap.js",
-  "types": "mathmap.d.ts",
+  "main": "sci_globe.js",
+  "types": "sci_globe.d.ts",
   "sideEffects": [
     "./snippets/*"
   ]

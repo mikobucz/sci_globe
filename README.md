@@ -1,10 +1,14 @@
-# MathMap CLI Cheatsheet
+<p align="center">
+  <img src="assets/banner_mono.png" alt="sci_globe" width="100%" />
+</p>
+
+# sci_globe CLI Cheatsheet
 
 ## 1. Budowanie i Serwer
 
 ```bash
 # Kompilacja binarki CLI (w trybie release dla pelnej wydajnosci)
-cargo build --release --bin mathmap-cli
+cargo build --release --bin sci_globe-cli
 
 # Przebudowanie silnika WebAssembly dla przegladarki
 wasm-pack build --target web --out-dir public/pkg --release
@@ -20,23 +24,23 @@ cargo test --release
 
 ```bash
 # Wypisz wszystkie zapisane presety z public/presets.json oraz wbudowane
-./target/release/mathmap-cli --list-presets
+./target/release/sci_globe-cli --list-presets
 
 # Odpal diagnostyke na swoim zapisanym presecie (tylko polaczone artykuly)
-./target/release/mathmap-cli --preset "test 3" --only-connected --seed 42
+./target/release/sci_globe-cli --preset "test 3" --only-connected --seed 42
 ```
 
 ## 3. Kartografia Wysp i Archipelagow (`--islands`)
 
 ```bash
 # Wykryj i przeanalizuj wszystkie wyspy (domyslnie >= 5 wezlow) dla swojego presetu
-./target/release/mathmap-cli --preset "test 3" --only-connected --seed 42 --islands
+./target/release/sci_globe-cli --preset "test 3" --only-connected --seed 42 --islands
 
 # Pokaz tylko wieksze kontynenty/wyspy (np. minimum 15 wezlow na wyspe)
-./target/release/mathmap-cli --preset "test 3" --only-connected --seed 42 --islands --min-island 15
+./target/release/sci_globe-cli --preset "test 3" --only-connected --seed 42 --islands --min-island 15
 
 # Pokaz nawet najmniejsze mikro-wyspy (od 3 wezlow wzwyz)
-./target/release/mathmap-cli --preset "test 3" --only-connected --seed 42 --islands --min-island 3
+./target/release/sci_globe-cli --preset "test 3" --only-connected --seed 42 --islands --min-island 3
 ```
 
 ## 4. Eksperymenty i Nadpisywanie Parametrow
@@ -45,19 +49,19 @@ Mozesz zaladowac dowolny `--preset`, a nastepnie nadpisac pojedyncze parametry z
 
 ```bash
 # Preset "test 3", ale ze zwiekszonym przyciaganiem linkow i stopniem normalizacji lisci
-./target/release/mathmap-cli --preset "test 3" --only-connected --link-str 1.2 --deg-norm 0.85 --islands
+./target/release/sci_globe-cli --preset "test 3" --only-connected --link-str 1.2 --deg-norm 0.85 --islands
 
 # Czysta symulacja bottom-up od zera (bez kotwic i bez kohezji) na 1000 krokow
-./target/release/mathmap-cli --preset pure --only-connected --steps 1000 --islands
+./target/release/sci_globe-cli --preset pure --only-connected --steps 1000 --islands
 
 # Inspekcja 10 losowych prac i ich najblizszych sasiadow na sferze 3D
-./target/release/mathmap-cli --preset "test (goat preset)" --only-connected --inspect 10
+./target/release/sci_globe-cli --preset "test (goat preset)" --only-connected --inspect 10
 
 # Eksport pelnego raportu diagnostycznego i profilera CPU do pliku JSON
-./target/release/mathmap-cli --preset "test 3" --only-connected --dump-json report.json
+./target/release/sci_globe-cli --preset "test 3" --only-connected --dump-json report.json
 ```
 
-## 5. Wszystkie Flagi `mathmap-cli`
+## 5. Wszystkie Flagi `sci_globe-cli`
 
 | Flaga | Opis |
 | :--- | :--- |

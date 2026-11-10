@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-MathMap - Dataset Builder
+sci_globe - Dataset Builder
 Pobiera próbkę najważniejszych prac z 10 głównych subfieldów matematyki z OpenAlex API,
 buduje graf cytowań oraz powiązań bibliograficznych (wspólne referencje) i zapisuje do JSON.
 """
@@ -42,10 +42,10 @@ def fetch_subfield_papers(subfield_id, subfield_name, count=100):
         f"filter=primary_topic.subfield.id:{subfield_id},has_references:true,from_publication_date:1990-01-01"
         f"&sort=cited_by_count:desc"
         f"&per-page={count}"
-        f"&mailto=mathmap_dev@example.com"
+        f"&mailto=sci_globe_dev@example.com"
     )
     
-    req = urllib.request.Request(url, headers={"User-Agent": "MathMap/1.0"})
+    req = urllib.request.Request(url, headers={"User-Agent": "sci_globe/1.0"})
     
     try:
         with urllib.request.urlopen(req, timeout=30) as resp:
@@ -57,7 +57,7 @@ def fetch_subfield_papers(subfield_id, subfield_name, count=100):
 
 def main():
     os.makedirs(OUTPUT_DIR, exist_ok=True)
-    print("=== MathMap: Budowanie zbioru danych z OpenAlex API ===")
+    print("=== sci_globe: Budowanie zbioru danych z OpenAlex API ===")
     print(f"Pobieranie {PAPERS_PER_SUBFIELD} prac dla każdego z {len(SUBFIELDS)} subfieldów...\n")
 
     papers_by_id = {}

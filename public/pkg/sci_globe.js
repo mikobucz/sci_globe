@@ -1,4 +1,4 @@
-/* @ts-self-types="./mathmap.d.ts" */
+/* @ts-self-types="./sci_globe.d.ts" */
 
 export class WasmUniverse {
     __destroy_into_raw() {
@@ -10,6 +10,9 @@ export class WasmUniverse {
     free() {
         const ptr = this.__destroy_into_raw();
         wasm.__wbg_wasmuniverse_free(ptr, 0);
+    }
+    freeze() {
+        wasm.wasmuniverse_freeze(this.__wbg_ptr);
     }
     /**
      * @param {Float32Array | number[]} init_x
@@ -219,7 +222,7 @@ function __wbg_get_imports() {
     };
     return {
         __proto__: null,
-        "./mathmap_bg.js": import0,
+        "./sci_globe_bg.js": import0,
     };
 }
 
@@ -444,7 +447,7 @@ async function __wbg_init_once(module_or_path) {
     }
 
     if (module_or_path === undefined) {
-        module_or_path = new URL('mathmap_bg.wasm', import.meta.url);
+        module_or_path = new URL('sci_globe_bg.wasm', import.meta.url);
     }
     const imports = __wbg_get_imports();
 

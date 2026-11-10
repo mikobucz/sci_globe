@@ -304,6 +304,16 @@ impl Universe {
         self.temperature = 1.0;
     }
 
+    /// Freezes the simulation in place without altering current node positions.
+    pub fn freeze(&mut self) {
+        self.temperature = 0.0;
+        self.vx.fill(0.0);
+        self.vy.fill(0.0);
+        self.svx.fill(0.0);
+        self.svy.fill(0.0);
+        self.svz.fill(0.0);
+    }
+
     pub fn step(&mut self, steps: u32) -> f32 {
         for _ in 0..steps {
             if self.temperature < 0.004 {
@@ -368,5 +378,38 @@ impl Universe {
 impl Default for Universe {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Universe;
+
+    #[test]
+    fn freeze_preserves_positions_across_steps() {
+        let mut u = Universe::new();
+        u.load_graph(
+            &[0.0, 10.0],
+            &[0.0, 10.0],
+            &[1.0, 0.0],
+            &[0.0, 1.0],
+            &[0.0, 0.0],
+            &[0.0, 0.0],
+            &[0.0, 0.0],
+            &[1.0, 0.0],
+            &[0.0, 1.0],
+            &[0.0, 0.0],
+            &[10.0, 20.0],
+            &[0, 1],
+            &[0],
+            &[1],
+            &[1.0],
+        );
+        u.freeze();
+        assert_eq!(u.temperature, 0.0);
+        let temp_after = u.step(50);
+        assert_eq!(temp_after, 0.0);
+        assert!((u.sx[0] - 1.0).abs() < 1e-6);
+        assert!((u.sy[1] - 1.0).abs() < 1e-6);
     }
 }

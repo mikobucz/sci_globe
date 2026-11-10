@@ -1,4 +1,4 @@
-// High-Performance Zero-Copy Canvas Renderer for MathMap (3D Globe & 2D Planar)
+// High-Performance Zero-Copy Canvas Renderer for sci_globe (3D Globe & 2D Planar)
 
 export const GLOBE_RADIUS = 660;
 
@@ -85,12 +85,7 @@ export class AtlasRenderer {
   render(bridge, views, state) {
     const ctx = this.ctx;
     ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
-
-    if (state.viewMode === 'GLOBE') {
-      this.renderGlobe(bridge, views, state);
-    } else {
-      this.renderPlanar2D(bridge, views, state);
-    }
+    this.renderGlobe(bridge, views, state);
   }
 
   renderGlobe(bridge, views, state) {
@@ -293,166 +288,6 @@ export class AtlasRenderer {
 
       ctx.restore();
     }
-  }
-
-  renderPlanar2D(bridge, views, state) {
-    const ctx = this.ctx;
-    const { camera, params, hoveredNode, selectedNode } = state;
-    const n = views.count;
-    this.ensureCapacity(n);
-
-    const xArr = views.x;
-    const yArr = views.y;
-    const rArr = views.r;
-
-    ctx.save();
-    ctx.translate(camera.x, camera.y);
-    ctx.scale(camera.scale, camera.scale);
-
-    // 1. Ambient field zones
-    if (params.showZones) {
-      for (let i = 0; i < bridge.zones.length; i++) {
-        const z = bridge.zones[i];
-        const grad = ctx.createRadialGradient(z.cx, z.cy, 20, z.cx, z.cy, 360);
-        grad.addColorStop(0, z.color + '10');
-        grad.addColorStop(0.7, z.color + '03');
-        grad.addColorStop(1, 'transparent');
-
-        ctx.fillStyle = grad;
-        ctx.beginPath();
-        ctx.arc(z.cx, z.cy, 360, 0, Math.PI * 2);
-        ctx.fill();
-
-        if (camera.scale < 2.0) {
-          const fontSize = Math.max(14, Math.min(22, 18 / camera.scale));
-          ctx.font = `italic ${fontSize}px Georgia, serif`;
-          ctx.fillStyle = z.color + '88';
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'middle';
-          ctx.fillText(z.name, z.cx, z.cy - 330);
-        }
-      }
-    }
-
-    // 2. Planar 2D citation edges
-    const active = selectedNode || hoveredNode;
-    if (params.showAllLines) {
-      ctx.lineWidth = 0.8 / camera.scale;
-      ctx.strokeStyle = '#1a1d27';
-      ctx.beginPath();
-      const edges = bridge.edges;
-      for (let i = 0; i < edges.length; i++) {
-        const u = edges[i].uIdx;
-        const v = edges[i].vIdx;
-        if (xArr[u] < 50000 && xArr[v] < 50000) {
-          ctx.moveTo(xArr[u], yArr[u]);
-          ctx.lineTo(xArr[v], yArr[v]);
-        }
-      }
-      ctx.stroke();
-    }
-
-    const connectedSet = new Set();
-    if (active) {
-      const aIdx = active.idx;
-      const ax = xArr[aIdx];
-      const ay = yArr[aIdx];
-
-      for (let k = 0; k < active.connections.length; k++) {
-        const cid = active.connections[k];
-        const t = bridge.nodeMap.get(cid);
-        if (!t) continue;
-        const tIdx = t.idx;
-        if (xArr[tIdx] > 50000) continue;
-        connectedSet.add(tIdx);
-
-        ctx.beginPath();
-        ctx.moveTo(ax, ay);
-        const mx = (ax + xArr[tIdx]) * 0.5;
-        const my = (ay + yArr[tIdx]) * 0.5 - 30;
-        ctx.quadraticCurveTo(mx, my, xArr[tIdx], yArr[tIdx]);
-
-        ctx.strokeStyle = active.color;
-        ctx.lineWidth = 2.0 / camera.scale;
-        ctx.stroke();
-
-        ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 1.0 / camera.scale;
-        ctx.beginPath();
-        ctx.arc(xArr[tIdx], yArr[tIdx], rArr[tIdx] + 2, 0, Math.PI * 2);
-        ctx.stroke();
-      }
-    }
-
-    // 3. Planar 2D nodes sorted by radius
-    for (let i = 0; i < n; i++) {
-      this.order[i] = i;
-    }
-    const ord = this.order.subarray(0, n);
-    ord.sort((a, b) => rArr[a] - rArr[b]);
-
-    const nodes = bridge.nodes;
-    for (let k = 0; k < n; k++) {
-      const idx = ord[k];
-      const nx = xArr[idx];
-      if (nx > 50000) continue;
-      const ny = yArr[idx];
-      const nr = rArr[idx];
-      const node = nodes[idx];
-
-      const isHovered = hoveredNode === node;
-      const isSelected = selectedNode === node;
-      const isConnected = connectedSet.has(idx);
-
-      let alpha = 1.0;
-      if (active && !isHovered && !isSelected && !isConnected) {
-        alpha = 0.25;
-      }
-
-      ctx.save();
-      ctx.globalAlpha = alpha;
-
-      ctx.beginPath();
-      ctx.arc(nx, ny, nr, 0, Math.PI * 2);
-      ctx.fillStyle = node.color;
-      ctx.fill();
-
-      ctx.lineWidth = (nr > 25 ? 1.8 : 1.0) / camera.scale;
-      ctx.strokeStyle = isSelected
-        ? '#ffffff'
-        : isHovered
-        ? '#58a6ff'
-        : '#000000';
-      ctx.stroke();
-
-      const isGiant = nr >= 38;
-      const show = isGiant || isHovered || isSelected || isConnected;
-
-      if (show && alpha > 0.3) {
-        const fontSize = isGiant
-          ? Math.max(11, Math.min(15, nr * 0.24))
-          : Math.max(10, Math.min(12, 11 / camera.scale));
-
-        ctx.font = `${fontSize}px Georgia, serif`;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'top';
-
-        ctx.fillStyle = '#ffffff';
-        ctx.strokeStyle = '#0e1013';
-        ctx.lineWidth = 3.0 / camera.scale;
-
-        const title =
-          node.title.length > 28
-            ? node.title.substring(0, 26) + '...'
-            : node.title;
-        ctx.strokeText(title, nx, ny + nr + 4);
-        ctx.fillText(title, nx, ny + nr + 4);
-      }
-
-      ctx.restore();
-    }
-
-    ctx.restore();
   }
 }
 
