@@ -96,7 +96,7 @@ async function loadDataset(datasetName) {
 
 function rebuildActiveSubset() {
   bridge.rebuildSubset(state.params, true);
-  nodeCountEl.innerText = `${bridge.nodes.length.toLocaleString()} prac`;
+  nodeCountEl.innerText = `${bridge.nodes.length.toLocaleString()} papers`;
   markSimActive();
 }
 
@@ -105,10 +105,10 @@ function markSimActive() {
   state.isSimRunning = true;
   state.simStartTime = Date.now();
   statusDot.className = 'status-dot';
-  statusText.innerText = 'Aktywna (Wasm)';
+  statusText.innerText = 'Active (Wasm)';
 }
 
-function markSimFrozen(label = 'Ustabilizowana (gotowy stan)') {
+function markSimFrozen(label = 'Converged (snapshot)') {
   state.isSimRunning = false;
   statusDot.className = 'status-dot frozen';
   statusText.innerText = label;
@@ -254,7 +254,7 @@ function setupSidebarBindings() {
   const btnPause = document.getElementById('btn-pause');
   btnPause.addEventListener('click', () => {
     state.isPaused = !state.isPaused;
-    btnPause.innerText = state.isPaused ? '[ wznów ]' : '[ pauza ]';
+    btnPause.innerText = state.isPaused ? '[ resume ]' : '[ pause ]';
     btnPause.classList.toggle('active', state.isPaused);
   });
 
@@ -392,7 +392,7 @@ function setupSidebarBindings() {
     names.forEach((name) => {
       const opt = document.createElement('option');
       opt.value = `custom:${name}`;
-      opt.textContent = `[Własny] ${name}`;
+      opt.textContent = `[Custom] ${name}`;
       opt.setAttribute('data-custom', '1');
       selectPreset.appendChild(opt);
     });
@@ -577,10 +577,10 @@ function setupSavedMapsBindings() {
   if (btnSaveSnapshot) {
     btnSaveSnapshot.addEventListener('click', async () => {
       const selectPreset = document.getElementById('select-preset');
-      const prName = selectPreset ? selectPreset.value.replace('custom:', '') : 'własny';
+      const prName = selectPreset ? selectPreset.value.replace('custom:', '') : 'custom';
       const name =
         (inputSnapshotName.value || '').trim() ||
-        `Globus ${bridge.nodes.length} prac (${prName})`;
+        `Globe ${bridge.nodes.length} papers (${prName})`;
 
       const elapsedSec = Math.max(1, Math.round((Date.now() - state.simStartTime) / 1000));
       const mapId = `web_${bridge.nodes.length}_${state.params.scrambleSeed}_${Date.now() % 10000}`;
@@ -596,7 +596,7 @@ function setupSavedMapsBindings() {
         scrambleSeed: state.params.scrambleSeed,
         onlyConnected: state.params.onlyConnected,
         globeRadius: state.params.globeRadius,
-        computeTime: `${elapsedSec}s (przeglądarka)`,
+        computeTime: `${elapsedSec}s (browser)`,
         source: 'Web UI',
         timestamp: new Date().toISOString().replace('T', ' ').substring(0, 16),
         params: { ...state.params },
@@ -612,17 +612,28 @@ function setupSavedMapsBindings() {
       };
 
       const prevText = btnSaveSnapshot.innerText;
-      btnSaveSnapshot.innerText = '[ zapisywanie... ]';
+      btnSaveSnapshot.innerText = '[ saving... ]';
       try {
-        await fetch('/api/generated_maps', {
+        const res = await fetch('/api/generated_maps', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(mapEntry),
         });
+        if (!res.ok) {
+          // Static hosting fallback (e.g. GitHub Pages): download snapshot JSON directly
+          const blob = new Blob([JSON.stringify(mapEntry.snapshot)], { type: 'application/json' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `${mapId}.json`;
+          a.click();
+          URL.revokeObjectURL(url);
+          return;
+        }
         if (inputSnapshotName) inputSnapshotName.value = '';
         await loadGeneratedMaps();
       } catch (err) {
-        console.error('Błąd zapisu mapy:', err);
+        console.error('Failed to save map:', err);
       } finally {
         btnSaveSnapshot.innerText = prevText;
       }
@@ -641,18 +652,18 @@ function setupSavedMapsBindings() {
       const file = e.target.files && e.target.files[0];
       if (!file) return;
       try {
-        if (importStatus) importStatus.innerText = 'Wczytywanie...';
+        if (importStatus) importStatus.innerText = 'Loading...';
         const text = await file.text();
         const rawJson = JSON.parse(text);
         const result = await applySnapshotPayload(rawJson, { name: file.name });
         if (importStatus) {
-          importStatus.innerText = `Załadowano ${result.loadedCount} prac`;
+          importStatus.innerText = `Loaded ${result.loadedCount} papers`;
         }
         if (drawerSaved) drawerSaved.classList.remove('open');
       } catch (err) {
-        console.error('Błąd importu pliku współrzędnych:', err);
+        console.error('Failed to import coordinates file:', err);
         if (importStatus) {
-          importStatus.innerText = err.message || 'Błąd pliku JSON';
+          importStatus.innerText = err.message || 'Invalid JSON file';
         }
       }
     });
@@ -665,11 +676,11 @@ async function loadGeneratedMaps() {
 
   try {
     const res = await fetch(`generated_maps.json?_t=${Date.now()}`);
-    if (!res.ok) throw new Error('Brak pliku');
+    if (!res.ok) throw new Error('File not found');
     const maps = await res.json();
     renderGeneratedMapsList(maps);
   } catch (err) {
-    container.innerHTML = `<div style="font-size:12px; color:#8c92a0; padding:10px;">Brak zapisanych map lub błąd odczytu.</div>`;
+    container.innerHTML = `<div style="font-size:12px; color:#8c92a0; padding:10px;">No saved maps found or failed to read generated_maps.json.</div>`;
   }
 }
 
@@ -678,7 +689,7 @@ function renderGeneratedMapsList(maps) {
   if (!container) return;
 
   if (!maps || maps.length === 0) {
-    container.innerHTML = `<div style="font-size:12px; color:#8c92a0; padding:10px;">Brak zapisanych map. Użyj 'sci_globe-cli --save-map' w terminalu lub przycisku 'zapisz stan' powyżej.</div>`;
+    container.innerHTML = `<div style="font-size:12px; color:#8c92a0; padding:10px;">No saved maps yet. Run 'sci_globe-cli --save-map' in the terminal or click '[ save state ]' above.</div>`;
     return;
   }
 
@@ -688,51 +699,51 @@ function renderGeneratedMapsList(maps) {
     card.className = 'saved-map-card';
 
     const knnBadge = m.metrics?.knnPurity ? `<div>KNN: <strong>${m.metrics.knnPurity}</strong></div>` : '';
-    const fpsBadge = m.metrics?.fps ? `<div>Szybkość: <strong>${m.metrics.fps} FPS</strong></div>` : '';
+    const fpsBadge = m.metrics?.fps ? `<div>Speed: <strong>${m.metrics.fps} FPS</strong></div>` : '';
     const hasSnapshot = Boolean(m.snapshotFile);
     const stateBadge = hasSnapshot
-      ? `<span class="saved-map-badge" style="color:#3fb950; background:rgba(63,185,80,0.14);">✓ Gotowy stan</span>`
-      : `<span class="saved-map-badge" style="color:#8c92a0; background:rgba(140,146,160,0.14);">Tylko seedy</span>`;
+      ? `<span class="saved-map-badge" style="color:#3fb950; background:rgba(63,185,80,0.14);">✓ Snapshot ready</span>`
+      : `<span class="saved-map-badge" style="color:#8c92a0; background:rgba(140,146,160,0.14);">Seeds only</span>`;
 
     const dsSeed = m.datasetSeed ?? m.params?.datasetSeed ?? '-';
     const scSeed = m.scrambleSeed ?? m.params?.scrambleSeed ?? '-';
-    const dsLabel = `${m.dataset || m.params?.dataset || 'global'}${(m.onlyConnected ?? m.params?.onlyConnected) ? ' (połączone)' : ''}`;
+    const dsLabel = `${m.dataset || m.params?.dataset || 'global'}${(m.onlyConnected ?? m.params?.onlyConnected) ? ' (connected)' : ''}`;
 
     card.innerHTML = `
       <div class="saved-map-title">
         <span>${m.name}</span>
         <div style="display:flex; gap:6px; align-items:center;">
           ${stateBadge}
-          <span class="saved-map-badge">${(m.sampleCount || 0).toLocaleString()} prac</span>
+          <span class="saved-map-badge">${(m.sampleCount || 0).toLocaleString()} papers</span>
         </div>
       </div>
       <div class="saved-map-meta">
-        <div>Preset: <strong>${m.preset || 'brak'}</strong></div>
-        <div>Zbiór: <strong>${dsLabel}</strong></div>
-        <div>Seed wyboru (Dataset): <strong style="color:#d2a8ff;">${dsSeed}</strong></div>
-        <div>Seed startu (Scramble): <strong style="color:#d2a8ff;">${scSeed}</strong></div>
-        <div>Czas: <strong>${m.computeTime || '-'}</strong></div>
-        <div>Źródło: <strong>${m.source || '-'}</strong></div>
+        <div>Preset: <strong>${m.preset || 'none'}</strong></div>
+        <div>Dataset: <strong>${dsLabel}</strong></div>
+        <div>Dataset Seed: <strong style="color:#d2a8ff;">${dsSeed}</strong></div>
+        <div>Scramble Seed: <strong style="color:#d2a8ff;">${scSeed}</strong></div>
+        <div>Compute Time: <strong>${m.computeTime || '-'}</strong></div>
+        <div>Source: <strong>${m.source || '-'}</strong></div>
         ${knnBadge}
         ${fpsBadge}
       </div>
       <div class="saved-map-actions">
-        ${hasSnapshot ? `<a class="kg-text-btn" href="${m.snapshotFile}" download="${m.id}.json" style="text-decoration:none;">[ pobierz .json ]</a>` : ''}
-        <button class="kg-text-btn btn-apply-saved-map">${hasSnapshot ? '[ wczytaj od razu ]' : '[ przelicz z seedów ]'}</button>
-        <button class="kg-text-btn btn-delete-saved-map" style="color:#f85149;">[ usuń ]</button>
+        ${hasSnapshot ? `<a class="kg-text-btn" href="${m.snapshotFile}" download="${m.id}.json" style="text-decoration:none;">[ download .json ]</a>` : ''}
+        <button class="kg-text-btn btn-apply-saved-map">${hasSnapshot ? '[ load instantly ]' : '[ simulate from seeds ]'}</button>
+        <button class="kg-text-btn btn-delete-saved-map" style="color:#f85149;">[ delete ]</button>
       </div>
     `;
 
     const btnApply = card.querySelector('.btn-apply-saved-map');
     btnApply.addEventListener('click', async () => {
       const prevLabel = btnApply.innerText;
-      btnApply.innerText = '[ wczytywanie... ]';
+      btnApply.innerText = '[ loading... ]';
       try {
         await applyGeneratedMap(m);
         if (drawerSaved) drawerSaved.classList.remove('open');
       } catch (err) {
-        console.error('Błąd wczytywania mapy:', err);
-        btnApply.innerText = '[ błąd wczytania ]';
+        console.error('Failed to load map:', err);
+        btnApply.innerText = '[ load error ]';
         return;
       }
       btnApply.innerText = prevLabel;
@@ -761,7 +772,7 @@ async function ensureDatasetLoaded(targetDataset) {
 async function applySnapshotPayload(rawJson, fallbackMeta = {}) {
   const { positionsMap, meta } = parseSnapshotPayload(rawJson);
   if (positionsMap.size === 0) {
-    throw new Error('Brak poprawnych współrzędnych (id -> x,y,z) w pliku.');
+    throw new Error('No valid coordinates (id -> x,y,z) found in file.');
   }
 
   const targetDataset = meta.dataset || fallbackMeta.dataset;
@@ -787,12 +798,12 @@ async function applySnapshotPayload(rawJson, fallbackMeta = {}) {
 
   const res = bridge.loadPrecomputedSubset(state.params, positionsMap, true);
   if (res.loadedCount === 0) {
-    throw new Error('Żadne ID pracy z pliku nie pasuje do wybranego zbioru danych.');
+    throw new Error('None of the paper IDs in the file match the selected dataset.');
   }
   state.params.sampleCount = res.loadedCount;
 
   syncInputsWithParams();
-  nodeCountEl.innerText = `${bridge.nodes.length.toLocaleString()} prac`;
+  nodeCountEl.innerText = `${bridge.nodes.length.toLocaleString()} papers`;
   markSimFrozen();
   resetCameraView();
   return res;
@@ -821,7 +832,7 @@ async function applyGeneratedMap(mapData) {
 
     const resp = await fetch(`${mapData.snapshotFile}?_t=${Date.now()}`);
     if (!resp.ok) {
-      throw new Error(`Nie udało się pobrać snapshotu: ${mapData.snapshotFile}`);
+      throw new Error(`Failed to fetch snapshot: ${mapData.snapshotFile}`);
     }
     const rawJson = await resp.json();
     await applySnapshotPayload(rawJson, mapData);
@@ -919,7 +930,7 @@ function setupEventListeners() {
         tooltip.innerHTML = `
           <div style="font-size:12px; max-width:280px; text-overflow:ellipsis; overflow:hidden;">${state.hoveredNode.title}</div>
           <div style="margin-top:2px; font-size:10px; color:#8b949e;">
-            Cytowania: <span class="cit">${state.hoveredNode.citations.toLocaleString()}</span> (${state.hoveredNode.year || 'b.d.'})
+            Citations: <span class="cit">${state.hoveredNode.citations.toLocaleString()}</span> (${state.hoveredNode.year || 'N/A'})
           </div>
           <div style="font-size:10px; color:${state.hoveredNode.color};">${state.hoveredNode.field_name}</div>
         `;
@@ -992,7 +1003,7 @@ function selectNode(n) {
 
   document.getElementById('ins-title').innerText = `[#${n.idx}] ${n.title}`;
   document.getElementById('ins-cites').innerText = n.citations.toLocaleString();
-  document.getElementById('ins-year').innerText = `${n.year || 'b.d.'} | lat: ${latDeg >= 0 ? '+' : ''}${latDeg.toFixed(1)}°, lon: ${lonDeg >= 0 ? '+' : ''}${lonDeg.toFixed(1)}°`;
+  document.getElementById('ins-year').innerText = `${n.year || 'N/A'} | lat: ${latDeg >= 0 ? '+' : ''}${latDeg.toFixed(1)}°, lon: ${lonDeg >= 0 ? '+' : ''}${lonDeg.toFixed(1)}°`;
   document.getElementById('ins-subfield').innerText = n.field_name;
   document.getElementById('ins-subfield').style.color = n.color;
   document.getElementById('ins-conn-count').innerText = n.connections.length;
@@ -1040,7 +1051,7 @@ function mainLoop() {
     if (temp < 0.004 && state.isSimRunning) {
       state.isSimRunning = false;
       statusDot.className = 'status-dot frozen';
-      statusText.innerText = 'Ustabilizowana';
+      statusText.innerText = 'Converged';
     }
   }
 

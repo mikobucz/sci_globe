@@ -1,52 +1,52 @@
 <!DOCTYPE html>
-<html lang="pl">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>sci_globe &amp; Global Science Atlas (Rust + Wasm)</title>
+  <title>sci_globe</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
-  <!-- DYSKRETNY STATUS I WSPÓŁRZĘDNE -->
+  <!-- STATUS BADGE & COORDINATES -->
   <div class="status-badge">
     <div class="status-dot" id="status-dot"></div>
-    <span id="status-text">Aktywna (Wasm)</span>
+    <span id="status-text">Active (Wasm)</span>
     <span>&bull;</span>
-    <span id="node-count">1 000 prac</span>
+    <span id="node-count">1,000 papers</span>
     <span>&bull;</span>
     <span id="coords-readout" style="color:#8b949e; font-variant-numeric:tabular-nums;">lat: -20.1&deg;, lon: +11.5&deg;</span>
   </div>
 
-  <!-- PRZYCISKI PO PRAWEJ STRONIE: OPCJE I WYGENEROWANE MAPY -->
+  <!-- TOP-RIGHT ACTION BUTTONS: OPTIONS & SAVED MAPS -->
   <div class="top-right-actions">
-    <button class="btn-top-action" id="btn-toggle-options">[ Opcje ]</button>
-    <button class="btn-top-action" id="btn-toggle-saved">[ Wygenerowane mapy ]</button>
+    <button class="btn-top-action" id="btn-toggle-options">[ Options ]</button>
+    <button class="btn-top-action" id="btn-toggle-saved">[ Saved Maps ]</button>
   </div>
 
-  <!-- DRAWER: WYGENEROWANE MAPY -->
+  <!-- DRAWER: SAVED MAPS -->
   <div class="sidebar-drawer" id="drawer-saved">
     <div class="drawer-header">
-      <div class="title">Wygenerowane Mapy (Baza Obliczeń)</div>
-      <button class="drawer-close" id="btn-close-saved">[ zamknij ]</button>
+      <div class="title">Saved Maps (Simulation Snapshots)</div>
+      <button class="drawer-close" id="btn-close-saved">[ close ]</button>
     </div>
     <div class="drawer-content">
       <div class="kg-param" style="border-bottom:none;">
         <div style="font-size:12px; color:#8c92a0; line-height:1.5;">
-          Zapisane gotowe układy z terminala (CLI) lub przeglądarki — z finalnymi współrzędnymi na globusie, gotowe do natychmiastowego wczytania bez ponownych obliczeń.
+          Saved layouts from the CLI or browser with final globe coordinates, ready to load instantly without re-running physics.
         </div>
         <div style="margin-top:10px; display:flex; gap:8px;">
-          <input type="text" class="kg-text-input" id="input-save-snapshot-name" placeholder="Nazwa bieżącego układu...">
-          <button class="kg-text-btn" id="btn-save-current-snapshot">[ zapisz stan ]</button>
+          <input type="text" class="kg-text-input" id="input-save-snapshot-name" placeholder="Layout name...">
+          <button class="kg-text-btn" id="btn-save-current-snapshot">[ save state ]</button>
         </div>
         <div style="margin-top:8px; display:flex; align-items:center; justify-content:space-between; gap:8px;">
           <input type="file" id="input-import-snapshot" accept=".json" style="display:none;">
-          <button class="kg-text-btn" id="btn-import-snapshot">[ wgraj plik współrzędnych (.json) ]</button>
+          <button class="kg-text-btn" id="btn-import-snapshot">[ load coordinates (.json) ]</button>
           <span id="import-snapshot-status" style="font-size:11px; color:#8c92a0;"></span>
         </div>
       </div>
       <div id="saved-maps-list" style="display:flex; flex-direction:column; gap:12px; margin-top:10px;">
-        <!-- Dynamicznie generowane karty map -->
+        <!-- Dynamically rendered map cards -->
       </div>
     </div>
   </div>
@@ -54,374 +54,374 @@
   <canvas id="atlas-canvas"></canvas>
   <div id="tooltip"></div>
 
-  <!-- JEDNA CIĄGŁA SEKCJA OPCJI (KITTENS GAME STYLE) -->
+  <!-- OPTIONS SIDEBAR (KITTENS GAME STYLE) -->
   <div class="sidebar-drawer" id="sidebar">
     <div class="drawer-header">
-      <div class="title">Opcje Symulacji (Silnik Rust/Wasm)</div>
-      <button class="drawer-close" id="btn-close-sidebar">[ zamknij ]</button>
+      <div class="title">Simulation Options (Rust/Wasm Engine)</div>
+      <button class="drawer-close" id="btn-close-sidebar">[ close ]</button>
     </div>
 
     <div class="drawer-content">
 
-      <!-- WYBÓR ZBIORU DANYCH -->
+      <!-- DATASET SELECTION -->
       <div class="kg-param">
         <div class="kg-param-header">
-          <span class="name">Zbiór wiedzy (Dataset)</span>
+          <span class="name">Knowledge Dataset</span>
         </div>
         <select class="kg-select" id="select-dataset">
-          <option value="global" selected>Wszystkie Nauki Świata (Global - 10 000 prac)</option>
-          <option value="math">Tylko Matematyka (Oryginalny - 1 000 prac)</option>
+          <option value="global" selected>All Sciences (Global - 10,000 papers)</option>
+          <option value="math">Mathematics Only (Original - 1,000 papers)</option>
         </select>
         <div class="kg-note">
-          <strong>Global</strong>: Matematyka, Fizyka, Chemia, Biologia, Medycyna, Humanistyka.<br>
-          <strong>Matematyka</strong>: 10 oficjalnych subfieldów czystej i stosowanej matematyki.
+          <strong>Global</strong>: Mathematics, Physics, Chemistry, Biology, Medicine, Humanities.<br>
+          <strong>Mathematics</strong>: 10 official subfields of pure and applied math.
         </div>
       </div>
 
-      <!-- SAMPLING PRAC ZE ZBIORU + OSOBNY SEED SAMPLINGU -->
+      <!-- PAPER SAMPLING + DATASET SEED -->
       <div class="kg-param">
         <div class="kg-param-header">
-          <span class="name">Aktywne prace w symulacji</span>
+          <span class="name">Active Papers in Simulation</span>
         </div>
         <div class="kg-param-controls">
           <input type="range" class="kg-slider" id="p-sample-count" min="100" max="10000" step="50" value="1000">
           <input type="number" class="kg-num-input" id="num-sample-count" min="100" max="10000" step="50" value="1000">
         </div>
         <div style="display:flex; align-items:baseline; gap:8px; margin-top:4px;">
-          <span style="font-size:11px; color:#8c92a0;">Ziarno doboru prac (Dataset Seed):</span>
+          <span style="font-size:11px; color:#8c92a0;">Sampling Seed (Dataset Seed):</span>
           <input type="number" class="kg-num-input" id="input-dataset-seed" value="1337" style="width:75px; text-align:left;">
         </div>
         <div style="display:flex; align-items:center; gap:8px; margin-top:8px;">
           <input type="checkbox" class="kg-check" id="chk-only-connected">
           <label for="chk-only-connected" style="font-size:11px; color:#c9d1d9; cursor:pointer;">
-            Tylko prace posiadające relacje (ukryj samotne wierzchołki)
+            Connected papers only (hide isolated nodes)
           </label>
         </div>
         <div class="kg-note">
-          Deterministyczne losowanie podzbioru prac.<br>
-          <span class="dir">Filtr relacji:</span> Odrzuca artykuły niemające żadnych cytowań w obrębie wybranego zbioru.
+          Deterministic random subset sampling.<br>
+          <span class="dir">Connection filter:</span> Excludes papers with no citations within the selected subset.
         </div>
       </div>
 
-      <!-- PRESET TOPOLOGICZNY -->
+      <!-- TOPOLOGICAL PRESET -->
       <div class="kg-param">
         <div class="kg-param-header">
-          <span class="name">Układ początkowy (Preset)</span>
+          <span class="name">Physics Preset</span>
         </div>
         <select class="kg-select" id="select-preset">
-          <option value="anchors">Domyślny atlas regionalny</option>
-          <option value="pure">Czysta fizyka (bez kotwic)</option>
-          <option value="cohesion">Spójność centroidów (bez kotwic)</option>
-          <option value="nebula">Mgławica rozszerzona (Paperscape)</option>
-          <option value="gravity">Grawitacja gigantów (Czarne dziury)</option>
-          <option value="tight">Zbity dysk</option>
+          <option value="anchors">Default regional atlas</option>
+          <option value="pure">Pure physics (no anchors)</option>
+          <option value="cohesion">Centroid cohesion (no anchors)</option>
+          <option value="nebula">Expanded nebula (Paperscape)</option>
+          <option value="gravity">Giant gravity (Black holes)</option>
+          <option value="tight">Tight disk</option>
         </select>
         <div style="display:flex; align-items:baseline; gap:10px; margin-top:6px;">
-          <input type="text" class="kg-text-input" id="input-preset-name" placeholder="Nazwa własnego układu...">
-          <button class="kg-text-btn" id="btn-save-preset">[ zapisz ]</button>
-          <button class="kg-text-btn" id="btn-delete-preset" style="display:none; color:#c96565;">[ usuń ]</button>
+          <input type="text" class="kg-text-input" id="input-preset-name" placeholder="Custom preset name...">
+          <button class="kg-text-btn" id="btn-save-preset">[ save ]</button>
+          <button class="kg-text-btn" id="btn-delete-preset" style="display:none; color:#c96565;">[ delete ]</button>
         </div>
         <div class="kg-note">
-          Gotowe oraz zapisane przez Ciebie zestawy parametrów (zapamiętywane w przeglądarce).
+          Built-in and custom parameter presets (saved in browser &amp; presets.json).
         </div>
       </div>
 
-      <!-- KONTROLA CZASU / KINETYKI + SEED LOSOWANIA POZYCJI -->
+      <!-- TIMESTEP / KINETICS & SCRAMBLE SEED -->
       <div class="kg-param">
         <div class="kg-param-header">
-          <span class="name">Kontrola układu</span>
+          <span class="name">Layout Controls</span>
         </div>
         <div class="kg-actions-strip">
-          <button class="kg-text-btn" id="btn-scramble">[ przemieszaj ]</button>
-          <button class="kg-text-btn" id="btn-reheat">[ podgrzej ]</button>
-          <button class="kg-text-btn" id="btn-pause">[ pauza ]</button>
-          <button class="kg-text-btn" id="btn-reset-view">[ wycentruj ]</button>
+          <button class="kg-text-btn" id="btn-scramble">[ scramble ]</button>
+          <button class="kg-text-btn" id="btn-reheat">[ reheat ]</button>
+          <button class="kg-text-btn" id="btn-pause">[ pause ]</button>
+          <button class="kg-text-btn" id="btn-reset-view">[ reset view ]</button>
         </div>
         <div style="display:flex; align-items:baseline; gap:8px; margin-top:8px;">
-          <span style="font-size:11px; color:#8c92a0;">Ziarno kinetyki (Scramble Seed):</span>
+          <span style="font-size:11px; color:#8c92a0;">Kinetics Seed (Scramble Seed):</span>
           <input type="number" class="kg-num-input" id="input-scramble-seed" value="42" style="width:75px; text-align:left;">
         </div>
         <div style="display:flex; align-items:baseline; gap:8px; margin-top:6px;">
-          <input type="text" class="kg-text-input" id="input-search-paper" placeholder="Szukaj pracy / #idx lub lat,lon (np. -28, 127)...">
-          <button class="kg-text-btn" id="btn-find-paper">[ leć ]</button>
+          <input type="text" class="kg-text-input" id="input-search-paper" placeholder="Search paper / #idx or lat,lon (e.g. -28, 127)...">
+          <button class="kg-text-btn" id="btn-find-paper">[ fly ]</button>
         </div>
         <div class="kg-note">
-          <strong>Seed</strong>: powtarzalny, deterministyczny start fizyki z tym samym obrotem SO(3) w CLI i przeglądarce.<br>
-          <strong>Nawigacja</strong>: wpisz tytuł pracy, indeks <code>#123</code> albo współrzędne <code>lat, lon</code> z raportu CLI, aby obrócić globus prosto na wyspę.
+          <strong>Seed</strong>: deterministic initial state with identical SO(3) rotation across CLI and browser.<br>
+          <strong>Navigation</strong>: enter a paper title, index <code>#123</code>, or <code>lat, lon</code> coordinates to rotate straight to an island.
         </div>
       </div>
 
       <!-- SPEED (STEPS PER FRAME) -->
       <div class="kg-param">
         <div class="kg-param-header">
-          <span class="name">Kroki na klatkę (Frames)</span>
+          <span class="name">Steps per Frame</span>
         </div>
         <div class="kg-param-controls">
           <input type="range" class="kg-slider" id="p-speed" min="1" max="10" step="1" value="2">
           <input type="number" class="kg-num-input" id="num-speed" min="1" max="10" step="1" value="2">
         </div>
         <div class="kg-note">
-          Liczba kroków całkowania fizyki w pojedynczej klatce ekranu.<br>
-          <span class="dir">&larr; Lewo:</span> Wolniejszy, miękki ruch; mniejsze obciążenie.<br>
-          <span class="dir">&rarr; Prawo:</span> Bardzo szybka zbieżność i ewolucja układu.
+          Physics integration sub-steps per animation frame.<br>
+          <span class="dir">&larr; Left:</span> Slower, smoother motion; lower CPU load.<br>
+          <span class="dir">&rarr; Right:</span> Faster convergence and layout evolution.
         </div>
       </div>
 
-      <!-- KOTWICE REGIONALNE -->
+      <!-- REGIONAL ANCHORS -->
       <div class="kg-param">
         <div class="kg-param-header">
-          <span class="name">Kotwice regionalne (Anchor Stiffness)</span>
+          <span class="name">Anchor Stiffness</span>
         </div>
         <div class="kg-param-controls">
           <input type="range" class="kg-slider" id="p-anchor" min="0" max="1" step="0.01" value="0.35">
           <input type="number" class="kg-num-input" id="num-anchor" min="0" max="1" step="0.01" value="0.35">
         </div>
         <div class="kg-note">
-          Siła ściągająca prace danej dziedziny do jej wyznaczonego bieguna/kontynentu.<br>
-          <span class="dir">&larr; Lewo:</span> Zero kotwic – czysta siatka cytowań (prace mogą wędrować swobodnie).<br>
-          <span class="dir">&rarr; Prawo:</span> Sztywne, wyraziste wyspy dyscyplin.
+          Pulls each paper toward its discipline's fixed anchor pole.<br>
+          <span class="dir">&larr; Left:</span> Zero anchors &ndash; pure citation graph (papers move freely).<br>
+          <span class="dir">&rarr; Right:</span> Rigid, pre-positioned discipline continents.
         </div>
       </div>
 
-      <!-- SPÓJNOŚĆ CENTROIDÓW DZIEDZINY -->
+      <!-- SUBFIELD COHESION -->
       <div class="kg-param">
         <div class="kg-param-header">
-          <span class="name">Spójność dziedziny (Subfield Cohesion)</span>
+          <span class="name">Subfield Cohesion</span>
         </div>
         <div class="kg-param-controls">
           <input type="range" class="kg-slider" id="p-cohesion" min="0" max="1" step="0.02" value="0.0">
           <input type="number" class="kg-num-input" id="num-cohesion" min="0" max="1" step="0.02" value="0.0">
         </div>
         <div class="kg-note">
-          Wewnętrzne przyciąganie prac do <strong>ruchomego środka własnej dziedziny</strong> (bez z góry narzuconych pozycji).<br>
-          <span class="dir">&larr; Lewo:</span> 0.0 – wyłączone (pełna swoboda; prace mogą się rozrywać).<br>
-          <span class="dir">&rarr; Prawo:</span> 1.0 – rozbite połówki tego samego koloru sklejają się w jeden ląd.
+          Attraction toward the <strong>emergent moving centroid</strong> of the same discipline (no fixed targets).<br>
+          <span class="dir">&larr; Left:</span> 0.0 &ndash; disabled (full bottom-up freedom).<br>
+          <span class="dir">&rarr; Right:</span> 1.0 &ndash; fragmented clusters of the same color merge together.
         </div>
       </div>
 
-      <!-- PRZENIKANIE NA GORĄCO (GHOST ANNEALING) -->
+      <!-- GHOST ANNEALING -->
       <div class="kg-param">
         <div class="kg-param-header">
-          <span class="name">Przenikanie na gorąco (Ghost Annealing)</span>
+          <span class="name">Ghost Annealing</span>
         </div>
         <div class="kg-param-controls">
           <input type="range" class="kg-slider" id="p-ghost" min="0" max="1" step="0.05" value="0.1">
           <input type="number" class="kg-num-input" id="num-ghost" min="0" max="1" step="0.05" value="0.1">
         </div>
         <div class="kg-note">
-          Miękkie zderzenia przy wysokiej temperaturze (pozwala pracom przepływać przez siebie na starcie zamiast klinować się).<br>
-          <span class="dir">&larr; Lewo:</span> 0.0 – twarde kolizje od początku (ryzyko zaklinowania w ciele stałym).<br>
-          <span class="dir">&rarr; Prawo:</span> 1.0 – kółka przenikają się jak ciecz na starcie, twardniejąc przy stygnięciu.
+          Soft collisions at high temperature so papers can pass through crowds early instead of jamming.<br>
+          <span class="dir">&larr; Left:</span> 0.0 &ndash; hard collisions from the start (higher jamming risk).<br>
+          <span class="dir">&rarr; Right:</span> 1.0 &ndash; fluid-like pass-through early, hardening as it cools.
         </div>
       </div>
 
-      <!-- REPULSJA MGŁAWICY -->
+      <!-- NEBULA REPULSION -->
       <div class="kg-param">
         <div class="kg-param-header">
-          <span class="name">Repulsja mgławicy (Nebula Repulsion)</span>
+          <span class="name">Nebula Repulsion</span>
         </div>
         <div class="kg-param-controls">
           <input type="range" class="kg-slider" id="p-nebula" min="0" max="3" step="0.05" value="0.0">
           <input type="number" class="kg-num-input" id="num-nebula" min="0" max="3" step="0.05" value="0.0">
         </div>
         <div style="display:flex; align-items:baseline; gap:8px; margin-top:4px;">
-          <span style="font-size:11px; color:#8c92a0;">Zasięg odpychania (Cutoff rad):</span>
+          <span style="font-size:11px; color:#8c92a0;">Repulsion Cutoff (rad):</span>
           <input type="number" class="kg-num-input" id="num-nebula-cut" min="0.05" max="1.0" step="0.02" value="0.45" style="width:65px; text-align:left;">
           <input type="range" class="kg-slider" id="p-nebula-cut" min="0.05" max="1.0" step="0.02" value="0.45">
         </div>
         <div class="kg-note">
-          Długodystansowe odpychanie obcych dyscyplin od siebie (Coulomb).<br>
-          <span class="dir">Zasięg (Cutoff):</span> Maksymalny dystans kątowy odpychania (domyślnie 0.45 rad ~ 26°). Zoptymalizowany przestrzennie O(N).
+          Long-range Coulomb repulsion between different disciplines.<br>
+          <span class="dir">Cutoff:</span> Max angular repulsion range (default 0.45 rad ~ 26&deg;), spatially accelerated in O(N).
         </div>
       </div>
 
-      <!-- GRAWITACJA GIGANTÓW -->
+      <!-- GIANT MASS PULL -->
       <div class="kg-param">
         <div class="kg-param-header">
-          <span class="name">Grawitacja gigantów (Giant Mass Pull)</span>
+          <span class="name">Giant Mass Pull</span>
         </div>
         <div class="kg-param-controls">
           <input type="range" class="kg-slider" id="p-giant" min="0" max="0.1" step="0.001" value="0.0">
           <input type="number" class="kg-num-input" id="num-giant" min="0" max="0.1" step="0.001" value="0.0">
         </div>
         <div class="kg-note">
-          Czy monumentalne prace ściągają sąsiadów jak czarne dziury.<br>
-          <span class="dir">&larr; Lewo:</span> Brak dodatkowej grawitacji gigantów.<br>
-          <span class="dir">&rarr; Prawo:</span> Prace ciasno orbitują i oblepiają największe osiągnięcia.
+          Whether highly cited monumental papers pull neighbors in like gravity wells.<br>
+          <span class="dir">&larr; Left:</span> No extra giant gravity.<br>
+          <span class="dir">&rarr; Right:</span> Papers tightly orbit and cluster around major hubs.
         </div>
       </div>
 
-      <!-- SPRĘŻYSTOŚĆ CYTOWAŃ -->
+      <!-- CITATION SPRING K -->
       <div class="kg-param">
         <div class="kg-param-header">
-          <span class="name">Sztywność sprężyn (Citation Spring K)</span>
+          <span class="name">Citation Spring K</span>
         </div>
         <div class="kg-param-controls">
           <input type="range" class="kg-slider" id="p-spring" min="0.001" max="0.1" step="0.001" value="0.035">
           <input type="number" class="kg-num-input" id="num-spring" min="0.001" max="0.1" step="0.001" value="0.035">
         </div>
         <div class="kg-note">
-          Stała Hooke'a łącząca prace, które bezpośrednio się cytują.<br>
-          <span class="dir">&larr; Lewo:</span> Wiotkie powiązania – prace swobodnie oddalają się od siebie.<br>
-          <span class="dir">&rarr; Prawo:</span> Sztywne wiązania – cytujące się prace mocno dociągają się do siebie.
+          Hooke spring stiffness connecting papers with direct citation links.<br>
+          <span class="dir">&larr; Left:</span> Loose springs &ndash; cited papers drift farther apart.<br>
+          <span class="dir">&rarr; Right:</span> Tight springs &ndash; cited papers pull strongly together.
         </div>
       </div>
 
-      <!-- BALANS STOPNI (DEGREE NORMALIZATION / RATUNEK LIŚCI) -->
+      <!-- DEGREE NORMALIZATION -->
       <div class="kg-param">
         <div class="kg-param-header">
-          <span class="name">Balans stopni (Leaf Rescue / Hub Norm)</span>
+          <span class="name">Degree Normalization (Leaf Rescue)</span>
         </div>
         <div class="kg-param-controls">
           <input type="range" class="kg-slider" id="p-deg-norm" min="0" max="1" step="0.05" value="0.55">
           <input type="number" class="kg-num-input" id="num-deg-norm" min="0" max="1" step="0.05" value="0.55">
         </div>
         <div class="kg-note">
-          Wyrównuje siłę sprężyn między pojedynczymi pracami (1 krawędź) a hubami (40 krawędzi).<br>
-          <span class="dir">&larr; Lewo:</span> 0.0 – klasyczna suma sił (pojedyncze prace łatwo utykają w obcym tłumie).<br>
-          <span class="dir">&rarr; Prawo:</span> 1.0 – wzmacnia pojedyncze sprężyny liści i chroni huby przed rozerwaniem.
+          Balances spring force between leaf papers (1 edge) and major hubs (40+ edges).<br>
+          <span class="dir">&larr; Left:</span> 0.0 &ndash; raw force sum (leaves easily get trapped in foreign crowds).<br>
+          <span class="dir">&rarr; Right:</span> 1.0 &ndash; boosts leaf springs and protects hubs from over-stretching.
         </div>
       </div>
 
-      <!-- MNOŻNIK MOSTÓW -->
+      <!-- BRIDGE MULTIPLIER -->
       <div class="kg-param">
         <div class="kg-param-header">
-          <span class="name">Mnożnik mostów (Bridge Multiplier)</span>
+          <span class="name">Bridge Multiplier</span>
         </div>
         <div class="kg-param-controls">
           <input type="range" class="kg-slider" id="p-bridge" min="0" max="4" step="0.1" value="2.0">
           <input type="number" class="kg-num-input" id="num-bridge" min="0" max="4" step="0.1" value="2.0">
         </div>
         <div class="kg-note">
-          Mnożnik naciągu sprężyn łączących prace z dwóch RÓŻNYCH dziedzin.<br>
-          <span class="dir">&larr; Lewo:</span> Mosty ignorowane – dziedziny odpychają się i izolują.<br>
-          <span class="dir">&rarr; Prawo:</span> Prace interdyscyplinarne zbliżają całe wielkie dyscypliny do siebie.
+          Spring tension multiplier for cross-discipline citation links.<br>
+          <span class="dir">&larr; Left:</span> Bridges ignored &ndash; disciplines repel and isolate.<br>
+          <span class="dir">&rarr; Right:</span> Interdisciplinary papers pull neighboring fields closer together.
         </div>
       </div>
 
-      <!-- ODSTĘP SPRĘŻYN -->
+      <!-- SPRING REST GAP -->
       <div class="kg-param">
         <div class="kg-param-header">
-          <span class="name">Odstęp sprężyn (Spring Rest Gap)</span>
+          <span class="name">Spring Rest Gap</span>
         </div>
         <div class="kg-param-controls">
           <input type="range" class="kg-slider" id="p-gap" min="0" max="30" step="1" value="6">
           <input type="number" class="kg-num-input" id="num-gap" min="0" max="30" step="1" value="6">
         </div>
         <div class="kg-note">
-          Domyślny luz (w pikselach) między brzegami połączonych kółek.<br>
-          <span class="dir">&larr; Lewo:</span> Sprężyny dociągają kółka krawędź w krawędź.<br>
-          <span class="dir">&rarr; Prawo:</span> Zachowuje przewiewne korytarze i oddech wokół prac.
+          Target slack gap (in pixels) between the edges of connected circles.<br>
+          <span class="dir">&larr; Left:</span> Springs pull connected circles edge-to-edge.<br>
+          <span class="dir">&rarr; Right:</span> Leaves breathing room and corridors around papers.
         </div>
       </div>
 
-      <!-- ROZMIAR BAZOWY KÓŁEK -->
+      <!-- RADIUS SCALE -->
       <div class="kg-param">
         <div class="kg-param-header">
-          <span class="name">Mnożnik rozmiaru kółek (Scale)</span>
+          <span class="name">Circle Radius Scale</span>
         </div>
         <div class="kg-param-controls">
           <input type="range" class="kg-slider" id="p-scale" min="0.2" max="2.0" step="0.05" value="0.75">
           <input type="number" class="kg-num-input" id="num-scale" min="0.2" max="2.0" step="0.05" value="0.75">
         </div>
         <div class="kg-note">
-          Globalne pomniejszanie lub powiększanie wszystkich kółek.<br>
-          <span class="dir">&larr; Lewo:</span> Drobne kropki, olbrzymia wolna przestrzeń i przewiew.<br>
-          <span class="dir">&rarr; Prawo:</span> Duże, monumentalne dyski.
+          Global scale multiplier for all paper circle radii.<br>
+          <span class="dir">&larr; Left:</span> Small dots, wide open space.<br>
+          <span class="dir">&rarr; Right:</span> Large, prominent disks.
         </div>
       </div>
 
-      <!-- PROMIEN GLOBUSA -->
+      <!-- GLOBE RADIUS -->
       <div class="kg-param">
         <div class="kg-param-header">
-          <span class="name">Promień Globusa (Globe Radius)</span>
+          <span class="name">Globe Radius</span>
         </div>
         <div class="kg-param-controls">
           <input type="range" class="kg-slider" id="p-globe-radius" min="300" max="2000" step="10" value="660">
           <input type="number" class="kg-num-input" id="num-globe-radius" min="300" max="2000" step="10" value="660">
         </div>
         <div class="kg-note">
-          Fizyczny i wizualny promień sfery 3D (domyślnie 660px).<br>
-          <span class="dir">&larr; Lewo:</span> Mniejsza kula (ciaśniejszy upakunek prac).<br>
-          <span class="dir">&rarr; Prawo:</span> Olbrzymi globus z ogromną powierzchnią na tysiące artykułów.
+          Physical and visual radius of the 3D sphere (default 660px).<br>
+          <span class="dir">&larr; Left:</span> Smaller sphere (tighter packing).<br>
+          <span class="dir">&rarr; Right:</span> Huge globe with extra surface area for thousands of papers.
         </div>
       </div>
 
-      <!-- SKALOWANIE PROMIENI -->
+      <!-- STEVENS EXPONENT -->
       <div class="kg-param">
         <div class="kg-param-header">
-          <span class="name">Skalowanie promieni (Stevens Exponent)</span>
+          <span class="name">Radius Scaling (Stevens Exponent)</span>
         </div>
         <div class="kg-param-controls">
           <input type="range" class="kg-slider" id="p-gamma" min="0.20" max="0.50" step="0.01" value="0.36">
           <input type="number" class="kg-num-input" id="num-gamma" min="0.20" max="0.50" step="0.01" value="0.36">
         </div>
         <div class="kg-note">
-          Potęga prawa Stevensa (Promień &prop; cytowania<sup>&gamma;</sup>).<br>
-          <span class="dir">&larr; Lewo:</span> Równość rozmiarów.<br>
-          <span class="dir">&rarr; Prawo:</span> Giganci rosną do kolosalnych rozmiarów dominujących mapę.
+          Stevens' power law exponent (Radius &prop; citations<sup>&gamma;</sup>).<br>
+          <span class="dir">&larr; Left:</span> More uniform circle sizes.<br>
+          <span class="dir">&rarr; Right:</span> Top-cited giants dominate the map.
         </div>
       </div>
 
-      <!-- BEZWŁADNOŚĆ MAS -->
+      <!-- MASS EXPONENT -->
       <div class="kg-param">
         <div class="kg-param-header">
-          <span class="name">Bezwładność mas (Mass Exponent)</span>
+          <span class="name">Mass Inertia (Mass Exponent)</span>
         </div>
         <div class="kg-param-controls">
           <input type="range" class="kg-slider" id="p-mass" min="0.5" max="2.5" step="0.1" value="1.8">
           <input type="number" class="kg-num-input" id="num-mass" min="0.5" max="2.5" step="0.1" value="1.8">
         </div>
         <div class="kg-note">
-          Jak masa rośnie z promieniem kółka w fizyce kolizji (Masa &prop; R<sup>&beta;</sup>).<br>
-          <span class="dir">&larr; Lewo:</span> Równe masy – drobna praca może przepchnąć giganta.<br>
-          <span class="dir">&rarr; Prawo:</span> Giganci są niewzruszoną opoką, małe prace ustępują im z drogi.
+          How collision mass scales with circle radius (Mass &prop; R<sup>&beta;</sup>).<br>
+          <span class="dir">&larr; Left:</span> Equalized masses &ndash; small papers can push giants.<br>
+          <span class="dir">&rarr; Right:</span> Giants stay anchored while small papers yield.
         </div>
       </div>
 
-      <!-- MARGINES KOLIZJI -->
+      <!-- COLLISION MARGIN -->
       <div class="kg-param">
         <div class="kg-param-header">
-          <span class="name">Margines kolizji (Collision Margin)</span>
+          <span class="name">Collision Margin</span>
         </div>
         <div class="kg-param-controls">
           <input type="range" class="kg-slider" id="p-margin" min="0.5" max="10.0" step="0.5" value="2.0">
           <input type="number" class="kg-num-input" id="num-margin" min="0.5" max="10.0" step="0.5" value="2.0">
         </div>
         <div class="kg-note">
-          Minimalny geometryczny bufor ochronny zapobiegający nakładaniu się kółek.<br>
-          <span class="dir">&larr; Lewo:</span> Ciasny styk krawędź w krawędź.<br>
-          <span class="dir">&rarr; Prawo:</span> Wyraźny luz i odstęp między obrysami.
+          Minimum geometric buffer preventing circle overlap.<br>
+          <span class="dir">&larr; Left:</span> Tight edge-to-edge contact.<br>
+          <span class="dir">&rarr; Right:</span> Clear spacing between outlines.
         </div>
       </div>
 
-      <!-- PRZEŁĄCZNIKI WIDOKU -->
+      <!-- VIEW TOGGLES -->
       <div class="kg-toggle-row">
-        <span class="label">Pokaż pełną sieć cytowań</span>
+        <span class="label">Show full citation network</span>
         <input type="checkbox" class="kg-check" id="chk-all-lines">
       </div>
 
     </div>
   </div>
 
-  <!-- INSPEKTOR DANYCH PRACY (LEWY BOK) -->
+  <!-- PAPER INSPECTOR (LEFT SIDEBAR) -->
   <div class="inspector-drawer" id="inspector">
     <div class="ins-header">
-      <span>Praca naukowa</span>
-      <button class="drawer-close" id="ins-close">[ zamknij ]</button>
+      <span>Research Paper</span>
+      <button class="drawer-close" id="ins-close">[ close ]</button>
     </div>
 
-    <div class="ins-title" id="ins-title">Tytuł pracy</div>
+    <div class="ins-title" id="ins-title">Paper Title</div>
 
     <div class="ins-meta">
-      <span>Cytowania: <strong id="ins-cites">0</strong></span>
-      <span>Rok wydania: <span id="ins-year">----</span></span>
-      <span>Dziedzina: <span id="ins-subfield" style="color:#58a6ff;">Nauka</span></span>
+      <span>Citations: <strong id="ins-cites">0</strong></span>
+      <span>Year: <span id="ins-year">----</span></span>
+      <span>Field: <span id="ins-subfield" style="color:#58a6ff;">Science</span></span>
     </div>
 
     <div>
       <div class="ins-links-label">
-        Powiązane prace (<span id="ins-conn-count">0</span>):
+        Connected papers (<span id="ins-conn-count">0</span>):
       </div>
       <div class="ins-conn-list" id="ins-connections"></div>
     </div>

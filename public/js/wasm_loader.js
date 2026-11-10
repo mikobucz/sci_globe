@@ -248,7 +248,7 @@ export class SimBridge {
         year: raw.year,
         color: raw.color,
         field_id: fid,
-        field_name: raw.field_name || raw.subfield_name || 'Nauka',
+        field_name: raw.field_name || raw.subfield_name || 'Science',
         connections: raw.connections || [],
       };
       this.nodeMap.set(nodeObj.id, nodeObj);
