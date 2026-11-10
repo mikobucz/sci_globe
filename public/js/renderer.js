@@ -64,6 +64,7 @@ export class AtlasRenderer {
     this.projY = new Float32Array(0);
     this.projDepth = new Float32Array(0);
     this.order = new Int32Array(0);
+    this.lastRenderedCount = 0;
   }
 
   resize() {
@@ -226,10 +227,12 @@ export class AtlasRenderer {
     }
 
     // 3. Depth-sorted nodes
+    this.lastRenderedCount = n;
     const ord = this.order.subarray(0, n);
     const depths = this.projDepth;
     ord.sort((a, b) => depths[a] - depths[b]);
 
+    const activeFieldId = state.activeFieldId || null;
     const nodes = bridge.nodes;
     for (let k = 0; k < n; k++) {
       const idx = ord[k];
@@ -242,11 +245,14 @@ export class AtlasRenderer {
       const isHovered = hoveredNode === node;
       const isSelected = selectedNode === node;
       const isConnected = connectedSet.has(idx);
+      const matchesField = !activeFieldId || node.field_id === activeFieldId;
 
       const isVisibleFront = depth > -0.05;
       let alpha = isVisibleFront ? 1.0 : 0.12;
       if (active && !isHovered && !isSelected && !isConnected) {
         alpha *= 0.25;
+      } else if (activeFieldId && !matchesField) {
+        alpha *= 0.14;
       }
 
       ctx.save();
@@ -266,7 +272,7 @@ export class AtlasRenderer {
         : '#080a0d';
       ctx.stroke();
 
-      const isGiant = nr >= 22.0;
+      const isGiant = nr >= 22.0 && matchesField;
       if (isVisibleFront && (isGiant || isHovered || isSelected || isConnected)) {
         const fontSize = isGiant
           ? Math.max(10, Math.min(14, rad * 0.45))

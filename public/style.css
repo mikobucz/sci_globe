@@ -23,6 +23,7 @@ canvas {
   height: 100%;
   display: block;
   cursor: grab;
+  touch-action: none;
 }
 canvas:active {
   cursor: grabbing;
@@ -52,6 +53,86 @@ canvas:active {
 .btn-top-action:hover {
   border-color: #58a6ff;
   color: #58a6ff;
+}
+
+/* DISCIPLINE LEGEND (BOTTOM-LEFT) */
+.legend-box {
+  position: absolute;
+  bottom: 14px;
+  left: 16px;
+  background: rgba(18, 20, 24, 0.92);
+  border: 1px solid #22262f;
+  padding: 8px 10px;
+  z-index: 45;
+  min-width: 185px;
+  max-width: 240px;
+}
+.legend-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 11px;
+  color: #a8aeb9;
+  padding-bottom: 6px;
+  border-bottom: 1px solid #1f232b;
+}
+.legend-box.collapsed .legend-header {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+.legend-box.collapsed .legend-list {
+  display: none;
+}
+.legend-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 6px;
+  max-height: 240px;
+  overflow-y: auto;
+}
+.legend-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 3px 4px;
+  font-size: 11px;
+  color: #c8cbd2;
+  cursor: pointer;
+  transition: background 0.12s, opacity 0.12s;
+}
+.legend-item:hover {
+  background: #1a1d24;
+}
+.legend-item.dimmed {
+  opacity: 0.35;
+}
+.legend-item.active {
+  background: #1d222c;
+  color: #ffffff;
+}
+.legend-item-left {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+.legend-dot {
+  width: 8px;
+  height: 8px;
+  flex-shrink: 0;
+}
+.legend-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.legend-count {
+  font-size: 10px;
+  color: #717784;
+  font-variant-numeric: tabular-nums;
 }
 
 /* DYSKRETNY PASEK STATUSU I PRZEŁĄCZNIK WIDOKU 2D/GLOB (LEWY GÓRNY RÓG) */

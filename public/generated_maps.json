@@ -16,7 +16,7 @@
     "sampleCount": 4000,
     "scrambleSeed": 42,
     "snapshotFile": "generated/map_4000_42.json",
-    "source": "Terminal CLI (mathmap-cli)",
+    "source": "Terminal CLI (sci_globe-cli)",
     "timestamp": "CLI run"
   }
 ]

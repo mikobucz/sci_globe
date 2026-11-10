@@ -64,6 +64,7 @@ const state = {
   hoveredNode: null,
   selectedNode: null,
   draggedNode: null,
+  activeFieldId: null,
   isSimRunning: true,
   isPaused: false,
   simStartTime: Date.now(),
@@ -77,18 +78,43 @@ async function boot() {
   renderer.resize();
   window.addEventListener('resize', () => renderer.resize());
 
+  statusDot.className = 'status-dot frozen';
+  statusText.innerText = 'Loading dataset...';
+
   await bridge.initialize();
-  await loadDataset(state.params.dataset);
+
+  let bootedFromShowcase = false;
+  try {
+    const res = await fetch(`generated_maps.json?_t=${Date.now()}`);
+    if (res.ok) {
+      const maps = await res.json();
+      const showcase = Array.isArray(maps) && maps.find((m) => Boolean(m.snapshotFile));
+      if (showcase) {
+        await applyGeneratedMap(showcase);
+        bootedFromShowcase = true;
+      }
+    }
+  } catch (_) {
+    bootedFromShowcase = false;
+  }
+
+  if (!bootedFromShowcase) {
+    await loadDataset(state.params.dataset);
+  }
 
   setupEventListeners();
   setupSidebarBindings();
   setupSavedMapsBindings();
+  setupLegendBindings();
   syncInputsWithParams();
 
   requestAnimationFrame(mainLoop);
 }
 
 async function loadDataset(datasetName) {
+  statusDot.className = 'status-dot frozen';
+  statusText.innerText = 'Loading dataset...';
+  state.activeFieldId = null;
   await bridge.loadDatasetFile(datasetName);
   rebuildActiveSubset();
   resetCameraView();
@@ -97,6 +123,7 @@ async function loadDataset(datasetName) {
 function rebuildActiveSubset() {
   bridge.rebuildSubset(state.params, true);
   nodeCountEl.innerText = `${bridge.nodes.length.toLocaleString()} papers`;
+  renderDisciplineLegend();
   markSimActive();
 }
 
@@ -763,10 +790,69 @@ function renderGeneratedMapsList(maps) {
 }
 
 async function ensureDatasetLoaded(targetDataset) {
-  if (targetDataset && targetDataset !== state.params.dataset) {
+  if (targetDataset && (targetDataset !== state.params.dataset || !bridge.fullRawData)) {
     state.params.dataset = targetDataset;
     await bridge.loadDatasetFile(targetDataset);
   }
+}
+
+function setupLegendBindings() {
+  const legendBox = document.getElementById('discipline-legend');
+  const btnToggle = document.getElementById('btn-legend-toggle');
+  const btnClear = document.getElementById('btn-legend-clear');
+
+  if (btnToggle && legendBox) {
+    btnToggle.addEventListener('click', () => {
+      const collapsed = legendBox.classList.toggle('collapsed');
+      btnToggle.innerText = collapsed ? '[ + ]' : '[ - ]';
+    });
+  }
+  if (btnClear) {
+    btnClear.addEventListener('click', () => {
+      state.activeFieldId = null;
+      renderDisciplineLegend();
+    });
+  }
+}
+
+function renderDisciplineLegend() {
+  const list = document.getElementById('legend-list');
+  const btnClear = document.getElementById('btn-legend-clear');
+  if (!list) return;
+
+  const counts = new Map();
+  for (let i = 0; i < bridge.nodes.length; i++) {
+    const fid = bridge.nodes[i].field_id;
+    counts.set(fid, (counts.get(fid) || 0) + 1);
+  }
+
+  if (btnClear) {
+    btnClear.style.display = state.activeFieldId ? 'inline' : 'none';
+  }
+
+  list.innerHTML = '';
+  (bridge.zones || []).forEach((z) => {
+    const cnt = counts.get(z.id) || 0;
+    if (cnt === 0) return;
+
+    const item = document.createElement('div');
+    item.className = 'legend-item';
+    if (state.activeFieldId) {
+      item.classList.add(state.activeFieldId === z.id ? 'active' : 'dimmed');
+    }
+    item.innerHTML = `
+      <div class="legend-item-left">
+        <span class="legend-dot" style="background:${z.color};"></span>
+        <span class="legend-name">${z.name}</span>
+      </div>
+      <span class="legend-count">${cnt.toLocaleString()}</span>
+    `;
+    item.addEventListener('click', () => {
+      state.activeFieldId = state.activeFieldId === z.id ? null : z.id;
+      renderDisciplineLegend();
+    });
+    list.appendChild(item);
+  });
 }
 
 async function applySnapshotPayload(rawJson, fallbackMeta = {}) {
@@ -801,9 +887,11 @@ async function applySnapshotPayload(rawJson, fallbackMeta = {}) {
     throw new Error('None of the paper IDs in the file match the selected dataset.');
   }
   state.params.sampleCount = res.loadedCount;
+  state.activeFieldId = null;
 
   syncInputsWithParams();
   nodeCountEl.innerText = `${bridge.nodes.length.toLocaleString()} papers`;
+  renderDisciplineLegend();
   markSimFrozen();
   resetCameraView();
   return res;
@@ -964,6 +1052,85 @@ function setupEventListeners() {
     }
   });
 
+  // Touch drag & pinch-to-zoom for mobile/trackpad
+  let touchStartPos = null;
+  let touchMoved = false;
+  let lastPinchDist = null;
+
+  canvas.addEventListener(
+    'touchstart',
+    (e) => {
+      if (e.touches.length === 1) {
+        const t = e.touches[0];
+        lastMouseX = t.clientX;
+        lastMouseY = t.clientY;
+        touchStartPos = { x: t.clientX, y: t.clientY };
+        touchMoved = false;
+        isPanning = true;
+        lastPinchDist = null;
+      } else if (e.touches.length === 2) {
+        isPanning = false;
+        touchMoved = true;
+        const dx = e.touches[0].clientX - e.touches[1].clientX;
+        const dy = e.touches[0].clientY - e.touches[1].clientY;
+        lastPinchDist = Math.hypot(dx, dy);
+      }
+    },
+    { passive: true }
+  );
+
+  canvas.addEventListener(
+    'touchmove',
+    (e) => {
+      e.preventDefault();
+      if (e.touches.length === 1 && isPanning) {
+        const t = e.touches[0];
+        const dx = t.clientX - lastMouseX;
+        const dy = t.clientY - lastMouseY;
+        lastMouseX = t.clientX;
+        lastMouseY = t.clientY;
+        if (touchStartPos && Math.hypot(t.clientX - touchStartPos.x, t.clientY - touchStartPos.y) > 8) {
+          touchMoved = true;
+        }
+        state.globeRotation.y += dx * 0.006;
+        state.globeRotation.x += dy * 0.006;
+        state.globeRotation.x = Math.max(
+          -Math.PI / 2.1,
+          Math.min(Math.PI / 2.1, state.globeRotation.x)
+        );
+      } else if (e.touches.length === 2) {
+        const dx = e.touches[0].clientX - e.touches[1].clientX;
+        const dy = e.touches[0].clientY - e.touches[1].clientY;
+        const dist = Math.hypot(dx, dy);
+        if (lastPinchDist && dist > 0) {
+          const factor = dist / lastPinchDist;
+          const newScale = Math.min(5.0, Math.max(0.15, state.camera.scale * factor));
+          state.camera.scale = newScale;
+          state.camera.targetScale = newScale;
+        }
+        lastPinchDist = dist;
+      }
+    },
+    { passive: false }
+  );
+
+  canvas.addEventListener('touchend', (e) => {
+    if (e.touches.length === 0) {
+      isPanning = false;
+      lastPinchDist = null;
+      if (touchStartPos && !touchMoved) {
+        const tapped = findNodeAtScreen(touchStartPos.x, touchStartPos.y);
+        if (tapped) {
+          selectNode(tapped);
+        } else {
+          state.selectedNode = null;
+          inspector.style.display = 'none';
+        }
+      }
+      touchStartPos = null;
+    }
+  });
+
   document.getElementById('ins-close').addEventListener('click', () => {
     state.selectedNode = null;
     inspector.style.display = 'none';
@@ -973,7 +1140,27 @@ function setupEventListeners() {
 function findNodeAtScreen(clientX, clientY) {
   const views = bridge.getViews();
   const nodes = bridge.nodes;
-  for (let i = nodes.length - 1; i >= 0; i--) {
+  const n = nodes.length;
+
+  // Reuse renderer's depth-sorted projected buffers when available
+  if (renderer.lastRenderedCount === n) {
+    const ord = renderer.order;
+    const pxArr = renderer.projX;
+    const pyArr = renderer.projY;
+    const depthArr = renderer.projDepth;
+    for (let k = n - 1; k >= 0; k--) {
+      const idx = ord[k];
+      if (depthArr[idx] > -0.15) {
+        const rPx = Math.max(3, views.r[idx] * state.camera.scale);
+        if (Math.hypot(pxArr[idx] - clientX, pyArr[idx] - clientY) <= rPx + 3) {
+          return nodes[idx];
+        }
+      }
+    }
+    return null;
+  }
+
+  for (let i = n - 1; i >= 0; i--) {
     const p = projectSphere(
       views.sx[i],
       views.sy[i],
