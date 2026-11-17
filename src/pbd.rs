@@ -130,6 +130,101 @@ pub fn resolve_collisions_2d(
     }
 }
 
+#[inline(always)]
+#[allow(clippy::too_many_arguments)]
+fn resolve_pair_3d(
+    i: usize,
+    j: usize,
+    sx: &mut [f32],
+    sy: &mut [f32],
+    sz: &mut [f32],
+    svx: &mut [f32],
+    svy: &mut [f32],
+    svz: &mut [f32],
+    r: &[f32],
+    inv_mass: &[f32],
+    field_idx: &[u16],
+    inv_globe: f32,
+    collision_margin: f32,
+    same_hardness: f32,
+    cross_hardness: f32,
+    dragged_idx: i32,
+) {
+    let ax = sx[i];
+    let ay = sy[i];
+    let az = sz[i];
+    // Since 2 * sin(a / 2) <= a for all a >= 0, max_chord is a strict upper bound on min_chord.
+    let max_chord = (r[i] + r[j] + collision_margin) * inv_globe;
+    let dx = sx[j] - ax;
+    if dx.abs() >= max_chord {
+        return;
+    }
+    let dy = sy[j] - ay;
+    if dy.abs() >= max_chord {
+        return;
+    }
+    let dz = sz[j] - az;
+    if dz.abs() >= max_chord {
+        return;
+    }
+    let chord_sq = dx * dx + dy * dy + dz * dz;
+    if chord_sq >= max_chord * max_chord {
+        return;
+    }
+
+    let min_chord = 2.0 * (max_chord * 0.5).sin();
+    if chord_sq < min_chord * min_chord {
+        let chord_dist = chord_sq.max(1e-6).sqrt();
+        let overlap = min_chord - chord_dist;
+        let nx = dx / chord_dist;
+        let ny = dy / chord_dist;
+        let nz = dz / chord_dist;
+
+        let hardness = if field_idx[i] == field_idx[j] {
+            same_hardness
+        } else {
+            cross_hardness
+        };
+        let pbd_stiff = 0.38 * hardness;
+
+        let inv_a = inv_mass[i];
+        let inv_b = inv_mass[j];
+        let total_inv = inv_a + inv_b;
+        if total_inv > 0.0 {
+            let shift = overlap * pbd_stiff / total_inv;
+            if (i as i32) != dragged_idx {
+                sx[i] -= nx * shift * inv_a;
+                sy[i] -= ny * shift * inv_a;
+                sz[i] -= nz * shift * inv_a;
+            }
+            if (j as i32) != dragged_idx {
+                sx[j] += nx * shift * inv_b;
+                sy[j] += ny * shift * inv_b;
+                sz[j] += nz * shift * inv_b;
+            }
+
+            // XPBD tangent velocity sliding
+            let rvx = svx[j] - svx[i];
+            let rvy = svy[j] - svy[i];
+            let rvz = svz[j] - svz[i];
+            let vn = rvx * nx + rvy * ny + rvz * nz;
+            if vn < 0.0 {
+                let impulse = vn * hardness * 0.5 / total_inv;
+                if (i as i32) != dragged_idx {
+                    svx[i] += nx * impulse * inv_a;
+                    svy[i] += ny * impulse * inv_a;
+                    svz[i] += nz * impulse * inv_a;
+                }
+                if (j as i32) != dragged_idx {
+                    svx[j] -= nx * impulse * inv_b;
+                    svy[j] -= ny * impulse * inv_b;
+                    svz[j] -= nz * impulse * inv_b;
+                }
+            }
+        }
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 pub fn resolve_collisions_3d(
     sx: &mut [f32],
@@ -165,22 +260,46 @@ pub fn resolve_collisions_3d(
             max_r = ri;
         }
     }
-    let max_chord_bound = (2.0 * max_r + collision_margin) * inv_globe * 1.02;
+
+    let mut hubs: Vec<usize> = Vec::new();
+    let mut normal_limit = max_r;
+    let mut normal_max_r = max_r;
+
+    if max_r > 12.0 && n >= 64 {
+        let limit = (max_r * 0.45).max(8.0);
+        let mut n_max_r = 4.0f32;
+        for (i, &ri) in r.iter().enumerate() {
+            if ri > limit {
+                hubs.push(i);
+            } else if ri > n_max_r {
+                n_max_r = ri;
+            }
+        }
+        if !hubs.is_empty() && hubs.len() * 8 < n {
+            normal_limit = limit;
+            normal_max_r = n_max_r;
+        } else {
+            hubs.clear();
+        }
+    }
+
+    let max_chord_bound = (2.0 * normal_max_r + collision_margin) * inv_globe * 1.02;
 
     for _pass in 0..2 {
-        grid.rebuild_adaptive(sx, sy, sz, max_chord_bound, 36);
+        if hubs.is_empty() {
+            grid.rebuild_adaptive(sx, sy, sz, max_chord_bound, 48);
+        } else {
+            grid.rebuild_adaptive_filtered(sx, sy, sz, r, normal_limit, max_chord_bound, 48);
+        }
         let dim = grid.dim;
         let dim_sq = dim * dim;
 
         for i in 0..n {
-            let ax = sx[i];
-            let ay = sy[i];
-            let az = sz[i];
-            let r_eff = (r[i] + collision_margin) * inv_globe;
-            let inv_a = inv_mass[i];
-            let fa = field_idx[i];
+            if !hubs.is_empty() && r[i] > normal_limit {
+                continue;
+            }
 
-            let (cx, cy, cz) = grid.cell_coords(ax, ay, az);
+            let (cx, cy, cz) = grid.cell_coords(sx[i], sy[i], sz[i]);
             let z_start = cz.saturating_sub(1);
             let z_end = (cz + 1).min(dim - 1);
             let y_start = cy.saturating_sub(1);
@@ -204,78 +323,57 @@ pub fn resolve_collisions_3d(
                                 continue;
                             }
 
-                            // Since 2 * sin(a / 2) <= a for all a >= 0, max_chord is a strict upper bound on min_chord.
-                            let max_chord = r_eff + r[j] * inv_globe;
-                            let dx = sx[j] - ax;
-                            if dx.abs() >= max_chord {
-                                continue;
-                            }
-                            let dy = sy[j] - ay;
-                            if dy.abs() >= max_chord {
-                                continue;
-                            }
-                            let dz = sz[j] - az;
-                            if dz.abs() >= max_chord {
-                                continue;
-                            }
-                            let chord_sq = dx * dx + dy * dy + dz * dz;
-                            if chord_sq >= max_chord * max_chord {
-                                continue;
-                            }
-
-                            let min_chord = 2.0 * (max_chord * 0.5).sin();
-                            if chord_sq < min_chord * min_chord {
-                                let chord_dist = chord_sq.max(1e-6).sqrt();
-                                let overlap = min_chord - chord_dist;
-                                let nx = dx / chord_dist;
-                                let ny = dy / chord_dist;
-                                let nz = dz / chord_dist;
-
-                                let hardness = if fa == field_idx[j] {
-                                    same_hardness
-                                } else {
-                                    cross_hardness
-                                };
-                                let pbd_stiff = 0.38 * hardness;
-
-                                let inv_b = inv_mass[j];
-                                let total_inv = inv_a + inv_b;
-                                if total_inv > 0.0 {
-                                    let shift = overlap * pbd_stiff / total_inv;
-                                    if (i as i32) != dragged_idx {
-                                        sx[i] -= nx * shift * inv_a;
-                                        sy[i] -= ny * shift * inv_a;
-                                        sz[i] -= nz * shift * inv_a;
-                                    }
-                                    if (j as i32) != dragged_idx {
-                                        sx[j] += nx * shift * inv_b;
-                                        sy[j] += ny * shift * inv_b;
-                                        sz[j] += nz * shift * inv_b;
-                                    }
-
-                                    // XPBD tangent velocity sliding
-                                    let rvx = svx[j] - svx[i];
-                                    let rvy = svy[j] - svy[i];
-                                    let rvz = svz[j] - svz[i];
-                                    let vn = rvx * nx + rvy * ny + rvz * nz;
-                                    if vn < 0.0 {
-                                        let impulse = vn * hardness * 0.5 / total_inv;
-                                        if (i as i32) != dragged_idx {
-                                            svx[i] += nx * impulse * inv_a;
-                                            svy[i] += ny * impulse * inv_a;
-                                            svz[i] += nz * impulse * inv_a;
-                                        }
-                                        if (j as i32) != dragged_idx {
-                                            svx[j] -= nx * impulse * inv_b;
-                                            svy[j] -= ny * impulse * inv_b;
-                                            svz[j] -= nz * impulse * inv_b;
-                                        }
-                                    }
-                                }
-                            }
+                            resolve_pair_3d(
+                                i,
+                                j,
+                                sx,
+                                sy,
+                                sz,
+                                svx,
+                                svy,
+                                svz,
+                                r,
+                                inv_mass,
+                                field_idx,
+                                inv_globe,
+                                collision_margin,
+                                same_hardness,
+                                cross_hardness,
+                                dragged_idx,
+                            );
                         }
                     }
                 }
+            }
+        }
+
+        // Dedicated hub-vs-all loop (hubs are excluded from the spatial grid)
+        for &h in &hubs {
+            for j in 0..n {
+                if j == h {
+                    continue;
+                }
+                if r[j] > normal_limit && j <= h {
+                    continue;
+                }
+                resolve_pair_3d(
+                    h,
+                    j,
+                    sx,
+                    sy,
+                    sz,
+                    svx,
+                    svy,
+                    svz,
+                    r,
+                    inv_mass,
+                    field_idx,
+                    inv_globe,
+                    collision_margin,
+                    same_hardness,
+                    cross_hardness,
+                    dragged_idx,
+                );
             }
         }
 
@@ -487,7 +585,7 @@ mod tests {
             );
         }
         let small_dim = grid.dim;
-        assert_eq!(small_dim, 36, "expected max_dim=36 for small radii, got {small_dim}");
+        assert_eq!(small_dim, 48, "expected max_dim=48 for small radii, got {small_dim}");
         let final_chord_small = chord_dist(sx[0], sy[0], sz[0], sx[1], sy[1], sz[1]);
         assert!(
             final_chord_small >= min_chord_small - 1e-4,
@@ -535,5 +633,108 @@ mod tests {
             final_chord_large >= min_chord_large - 1e-4,
             "large radii: expected final chord {final_chord_large} >= {min_chord_large}"
         );
+    }
+
+    #[test]
+    fn resolve_collisions_3d_hub_split_separates_hub_normal_and_hub_hub_pairs() {
+        let globe_radius = 660.0;
+        let collision_margin = 2.0_f32;
+        let n = 72; // >= 64 so hub-splitting activates
+
+        // 2 giant hubs (indices 0, 1) with r=60, and 70 normal nodes (indices 2..72) with r=6
+        let mut r = vec![6.0_f32; n];
+        r[0] = 60.0;
+        r[1] = 60.0;
+
+        let mut sx = vec![0.0_f32; n];
+        let mut sy = vec![0.0_f32; n];
+        let mut sz = vec![0.0_f32; n];
+
+        // Place hubs 0 and 1 overlapping near +X on S^2
+        let th_hh = 0.05_f32;
+        sx[0] = 1.0;
+        sy[0] = 0.0;
+        sz[0] = 0.0;
+        sx[1] = th_hh.cos();
+        sy[1] = th_hh.sin();
+        sz[1] = 0.0;
+
+        // Place normal node 2 overlapping hub 0 near +X (in +Z direction)
+        let th_hn = 0.02_f32;
+        sx[2] = th_hn.cos();
+        sy[2] = 0.0;
+        sz[2] = th_hn.sin();
+
+        // Distribute remaining normal nodes on the opposite hemisphere (-X) so they don't interfere
+        for i in 3..n {
+            let t = (i as f32) * 0.61803399;
+            let z = -0.8 + 1.6 * ((i - 3) as f32) / ((n - 3) as f32);
+            let rho = (1.0 - z * z).max(0.0).sqrt();
+            sx[i] = -(0.5 + 0.5 * rho.abs()).min(1.0);
+            sy[i] = rho * t.sin();
+            sz[i] = z;
+            let len = (sx[i] * sx[i] + sy[i] * sy[i] + sz[i] * sz[i]).sqrt();
+            sx[i] /= len;
+            sy[i] /= len;
+            sz[i] /= len;
+        }
+
+        let mut svx = vec![0.0_f32; n];
+        let mut svy = vec![0.0_f32; n];
+        let mut svz = vec![0.0_f32; n];
+        let inv_mass = vec![1.0_f32; n];
+        let field_idx = vec![0_u16; n];
+        let mut grid = SpatialGrid3D::new(14);
+
+        for _ in 0..40 {
+            resolve_collisions_3d(
+                &mut sx,
+                &mut sy,
+                &mut sz,
+                &mut svx,
+                &mut svy,
+                &mut svz,
+                &r,
+                &inv_mass,
+                &field_idx,
+                &mut grid,
+                globe_radius,
+                collision_margin,
+                0.0,
+                0.0,
+                -1,
+            );
+        }
+
+        // Grid should use fine resolution based on normal nodes (r=6 -> dim=48)
+        assert_eq!(
+            grid.dim, 48,
+            "expected fine grid dim=48 from normal_max_r=6.0, got {}",
+            grid.dim
+        );
+
+        let min_ang_hh = (r[0] + r[1] + collision_margin) / globe_radius;
+        let min_chord_hh = 2.0 * (min_ang_hh * 0.5).sin();
+        let final_hh = chord_dist(sx[0], sy[0], sz[0], sx[1], sy[1], sz[1]);
+        assert!(
+            final_hh >= min_chord_hh - 1e-4,
+            "hub-hub pair should separate: {final_hh} < {min_chord_hh}"
+        );
+
+        let min_ang_hn = (r[0] + r[2] + collision_margin) / globe_radius;
+        let min_chord_hn = 2.0 * (min_ang_hn * 0.5).sin();
+        let final_hn = chord_dist(sx[0], sy[0], sz[0], sx[2], sy[2], sz[2]);
+        assert!(
+            final_hn >= min_chord_hn - 1e-4,
+            "hub-normal pair should separate: {final_hn} < {min_chord_hn}"
+        );
+
+        for i in 0..n {
+            let norm = (sx[i] * sx[i] + sy[i] * sy[i] + sz[i] * sz[i]).sqrt();
+            assert!(
+                (norm - 1.0).abs() < 1e-5,
+                "node {i} drifted off S^2: norm = {norm}"
+            );
+        }
     }
 }

@@ -94,7 +94,22 @@ impl SpatialGrid3D {
     }
 
     #[inline]
-    fn insert_nodes(&mut self, sx: &[f32], sy: &[f32], sz: &[f32]) {
+    fn set_adaptive_dim(&mut self, target_cell_size: f32, max_dim: usize) {
+        let max_dim = max_dim.max(6);
+        let min_cell = 2.16 / (max_dim as f32);
+        let dim = ((2.16 / target_cell_size.max(min_cell)).floor() as usize).clamp(6, max_dim);
+        self.dim = dim;
+        self.inv_cell_size = (dim as f32) / 2.16;
+    }
+
+    #[inline]
+    fn insert_nodes_impl(
+        &mut self,
+        sx: &[f32],
+        sy: &[f32],
+        sz: &[f32],
+        filter: Option<(&[f32], f32)>,
+    ) {
         let n = sx.len();
         if self.next.len() < n {
             self.next.resize(n, -1);
@@ -109,6 +124,12 @@ impl SpatialGrid3D {
         self.head[..total_cells].fill(-1);
 
         for i in 0..n {
+            if let Some((r, r_limit)) = filter {
+                if r[i] > r_limit {
+                    self.next[i] = -1;
+                    continue;
+                }
+            }
             let cx = (((sx[i] - self.min_coord) * self.inv_cell_size) as i32).clamp(0, dim_i - 1) as usize;
             let cy = (((sy[i] - self.min_coord) * self.inv_cell_size) as i32).clamp(0, dim_i - 1) as usize;
             let cz = (((sz[i] - self.min_coord) * self.inv_cell_size) as i32).clamp(0, dim_i - 1) as usize;
@@ -120,7 +141,7 @@ impl SpatialGrid3D {
 
     #[inline]
     pub fn rebuild(&mut self, sx: &[f32], sy: &[f32], sz: &[f32]) {
-        self.insert_nodes(sx, sy, sz);
+        self.insert_nodes_impl(sx, sy, sz, None);
     }
 
     #[inline]
@@ -132,12 +153,23 @@ impl SpatialGrid3D {
         target_cell_size: f32,
         max_dim: usize,
     ) {
-        let max_dim = max_dim.max(6);
-        let min_cell = 2.16 / (max_dim as f32);
-        let dim = ((2.16 / target_cell_size.max(min_cell)).floor() as usize).clamp(6, max_dim);
-        self.dim = dim;
-        self.inv_cell_size = (dim as f32) / 2.16;
-        self.insert_nodes(sx, sy, sz);
+        self.set_adaptive_dim(target_cell_size, max_dim);
+        self.insert_nodes_impl(sx, sy, sz, None);
+    }
+
+    #[inline]
+    pub fn rebuild_adaptive_filtered(
+        &mut self,
+        sx: &[f32],
+        sy: &[f32],
+        sz: &[f32],
+        r: &[f32],
+        r_limit: f32,
+        target_cell_size: f32,
+        max_dim: usize,
+    ) {
+        self.set_adaptive_dim(target_cell_size, max_dim);
+        self.insert_nodes_impl(sx, sy, sz, Some((r, r_limit)));
     }
 
     #[inline]
