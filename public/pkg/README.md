@@ -2,83 +2,91 @@
   <img src="assets/banner_mono.png" alt="sci_globe" width="100%" />
 </p>
 
+**sci_globe** is my attempt at trying to create a "knowledge globe" where the layout emerges from connections between papers using a bottom-up approach".
+Right now im still developing the project.
+
 # sci_globe CLI Cheatsheet
 
-## 1. Budowanie i Serwer
+## 1. Build & Dev Server
 
 ```bash
-# Kompilacja binarki CLI (w trybie release dla pelnej wydajnosci)
+# Compile the CLI binary (release mode for full performance)
 cargo build --release --bin sci_globe-cli
 
-# Przebudowanie silnika WebAssembly dla przegladarki
+# Rebuild the WebAssembly engine for the browser
 wasm-pack build --target web --out-dir public/pkg --release
 
-# Uruchomienie serwera z synchronizacja presetow (http://localhost:3000)
+# Start the local dev server with preset & snapshot sync (http://localhost:3000)
 python3 serve.py
 
-# Uruchomienie automatycznych testow jednostkowych i zbieznosci fizyki
+# Run unit tests and physics convergence checks
 cargo test --release
 ```
 
-## 2. Presety z Przegladarki
+## 2. Browser Presets
 
 ```bash
-# Wypisz wszystkie zapisane presety z public/presets.json oraz wbudowane
+# List all saved presets from public/presets.json and built-in presets
 ./target/release/sci_globe-cli --list-presets
 
-# Odpal diagnostyke na swoim zapisanym presecie (tylko polaczone artykuly)
+# Run diagnostics on a saved preset (connected papers only)
 ./target/release/sci_globe-cli --preset "test 3" --only-connected --seed 42
 ```
 
-## 3. Kartografia Wysp i Archipelagow (`--islands`)
+## 3. Island & Archipelago Cartography (`--islands`)
 
 ```bash
-# Wykryj i przeanalizuj wszystkie wyspy (domyslnie >= 5 wezlow) dla swojego presetu
+# Detect and analyze all islands (default >= 5 nodes) for a preset
 ./target/release/sci_globe-cli --preset "test 3" --only-connected --seed 42 --islands
 
-# Pokaz tylko wieksze kontynenty/wyspy (np. minimum 15 wezlow na wyspe)
+# Show only larger continents/islands (e.g. minimum 15 nodes per island)
 ./target/release/sci_globe-cli --preset "test 3" --only-connected --seed 42 --islands --min-island 15
 
-# Pokaz nawet najmniejsze mikro-wyspy (od 3 wezlow wzwyz)
+# Show even the smallest micro-islands (3 nodes and up)
 ./target/release/sci_globe-cli --preset "test 3" --only-connected --seed 42 --islands --min-island 3
 ```
 
-## 4. Eksperymenty i Nadpisywanie Parametrow
+## 4. Experiments & Parameter Overrides
 
-Mozesz zaladowac dowolny `--preset`, a nastepnie nadpisac pojedyncze parametry z linii komend:
+You can load any `--preset` and override individual parameters from the command line:
 
 ```bash
-# Preset "test 3", ale ze zwiekszonym przyciaganiem linkow i stopniem normalizacji lisci
+# Preset "test 3" with stronger link attraction and leaf degree normalization
 ./target/release/sci_globe-cli --preset "test 3" --only-connected --link-str 1.2 --deg-norm 0.85 --islands
 
-# Czysta symulacja bottom-up od zera (bez kotwic i bez kohezji) na 1000 krokow
+# Pure bottom-up simulation from scratch (no anchors, no cohesion) for 1000 steps
 ./target/release/sci_globe-cli --preset pure --only-connected --steps 1000 --islands
 
-# Inspekcja 10 losowych prac i ich najblizszych sasiadow na sferze 3D
+# Inspect 10 random papers and their nearest neighbors on the 3D sphere
 ./target/release/sci_globe-cli --preset "test (goat preset)" --only-connected --inspect 10
 
-# Eksport pelnego raportu diagnostycznego i profilera CPU do pliku JSON
+# Run a simulation and save its final 3D snapshot for instant loading in the UI
+./target/release/sci_globe-cli --preset "test 4" --sample 4000 --dataset-seed 1337 --seed 42 --save-map "Global 4k (test 4)"
+
+# Export the full diagnostic report and CPU profiler breakdown to JSON
 ./target/release/sci_globe-cli --preset "test 3" --only-connected --dump-json report.json
 ```
 
-## 5. Wszystkie Flagi `sci_globe-cli`
+## 5. All `sci_globe-cli` Flags
 
-| Flaga | Opis |
+| Flag | Description |
 | :--- | :--- |
-| `--preset <NAZWA>` | Laduje preset z `public/presets.json` (lub wbudowany: `default`, `pure`, `cohesion`) |
-| `--list-presets` | Wypisuje dostepne presety i konczy dzialanie |
-| `--islands` | Uruchamia kartograf wysp (klastry przestrzenne 3D, czystosc, słowa kluczowe, mosty) |
-| `--min-island <N>` | Minimalny rozmiar wyspy do wyswietlenia w raporcie (domyslnie `5`) |
-| `--only-connected` | Filtruje graf tylko do artykulow posiadajacych cytowania (`deg > 0`) |
-| `--all-nodes` | Wlacza rowniez artykuly bez zadnych cytowan (`deg == 0`) |
-| `--steps <N>` | Liczba klatek symulacji przed pomiarem (domyslnie `700`) |
-| `--seed <N>` | Ziarno RNG dla w pelni powtarzalnego układu poczatkowego (np. `--seed 42`) |
-| `--inspect <N>` | Liczba pojedynczych wezlow do szczegolowej inspekcji sasiadow (domyslnie `5`) |
-| `--anchor <F>` | Nadpisuje sile kotwic dziedzinowych (`anchor_strength`) |
-| `--cohesion <F>` | Nadpisuje kohezje tej samej dziedziny (`field_cohesion`) |
-| `--nebula <F>` | Nadpisuje odpychanie innych dziedzin (`nebula_repulsion`) |
-| `--link-str <F>` | Nadpisuje sile przyciagania cytowan (`link_strength`) |
-| `--deg-norm <F>` | Nadpisuje wyrownanie szans dla lisci (`degree_norm`) |
-| `--pbd <F>` | Nadpisuje twardosc kolizji XPBD (`pbd_stiffness`) |
-| `--dump-json <PLIK>` | Zapisuje surowe metryki do pliku JSON |
+| `--preset <NAME>` | Loads a preset from `public/presets.json` (or built-in: `anchors`, `pure`, `cohesion`, `nebula`, `gravity`, `tight`) |
+| `--list-presets` | Lists available presets and exits |
+| `--list-maps` | Lists saved maps from `public/generated_maps.json` and exits |
+| `--save-map <NAME>` | Saves the final globe coordinates (`public/generated/<id>.json`) and entry in `public/generated_maps.json` |
+| `--islands` | Runs the island cartographer (3D spatial clusters, purity, TF-IDF keywords, bridges) |
+| `--min-island <N>` | Minimum island size to display in the report (default `4`) |
+| `--only-connected` | Filters the graph to papers with at least one citation (`deg > 0`) |
+| `--all-nodes` | Includes isolated papers with zero citations (`deg == 0`) |
+| `--steps <N>` | Number of simulation steps before measuring |
+| `--seed <N>` | RNG seed for a reproducible initial layout (e.g. `--seed 42`) |
+| `--inspect <N>` | Number of individual nodes for detailed neighbor inspection (default `4`) |
+| `--anchor <F>` | Overrides discipline anchor strength (`anchor_strength`) |
+| `--cohesion <F>` | Overrides same-discipline cohesion (`subfield_cohesion`) |
+| `--nebula <F>` | Overrides cross-discipline repulsion (`nebula_repulsion`) |
+| `--link-str <F>` | Overrides citation spring attraction |
+| `--deg-norm <F>` | Overrides leaf degree normalization (`degree_norm`) |
+| `--pbd <F>` | Overrides XPBD collision stiffness |
+| `--dump-json <FILE>` | Writes raw metrics and diagnostics to a JSON file |
 
