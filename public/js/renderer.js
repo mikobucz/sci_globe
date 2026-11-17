@@ -56,6 +56,8 @@ export function unprojectScreenToSphere(clientX, clientY, globeRotation, camera,
   return { sx, sy, sz };
 }
 
+const DEPTH_BUCKETS = 1024;
+
 export class AtlasRenderer {
   constructor(canvas) {
     this.canvas = canvas;
@@ -64,6 +66,9 @@ export class AtlasRenderer {
     this.projY = new Float32Array(0);
     this.projDepth = new Float32Array(0);
     this.order = new Int32Array(0);
+    this.bucketCounts = new Int32Array(DEPTH_BUCKETS);
+    this.bucketOffsets = new Int32Array(DEPTH_BUCKETS);
+    this.connectedSet = new Set();
     this.lastRenderedCount = 0;
   }
 
@@ -80,6 +85,40 @@ export class AtlasRenderer {
       this.projY = new Float32Array(n);
       this.projDepth = new Float32Array(n);
       this.order = new Int32Array(n);
+    }
+  }
+
+  /**
+   * Zero-allocation O(N) counting/bucket sort over projDepth in [-1.0, 1.0],
+   * clamping out-of-range depths cleanly while preserving back-to-front order.
+   */
+  sortNodesByDepth(n) {
+    const depths = this.projDepth;
+    const counts = this.bucketCounts;
+    const offsets = this.bucketOffsets;
+    const ord = this.order;
+    const halfBuckets = DEPTH_BUCKETS * 0.5;
+    const maxBucket = DEPTH_BUCKETS - 1;
+
+    counts.fill(0);
+    for (let i = 0; i < n; i++) {
+      let b = ((depths[i] + 1.0) * halfBuckets) | 0;
+      if (b < 0) b = 0;
+      else if (b > maxBucket) b = maxBucket;
+      counts[b]++;
+    }
+
+    let acc = 0;
+    for (let b = 0; b < DEPTH_BUCKETS; b++) {
+      offsets[b] = acc;
+      acc += counts[b];
+    }
+
+    for (let i = 0; i < n; i++) {
+      let b = ((depths[i] + 1.0) * halfBuckets) | 0;
+      if (b < 0) b = 0;
+      else if (b > maxBucket) b = maxBucket;
+      ord[offsets[b]++] = i;
     }
   }
 
@@ -179,7 +218,6 @@ export class AtlasRenderer {
       this.projX[i] = cx + x1 * r;
       this.projY[i] = cy - y2 * r;
       this.projDepth[i] = z2;
-      this.order[i] = i;
     }
 
     // 2. Citation edges on sphere
@@ -200,7 +238,8 @@ export class AtlasRenderer {
       ctx.stroke();
     }
 
-    const connectedSet = new Set();
+    const connectedSet = this.connectedSet;
+    connectedSet.clear();
     if (active) {
       const aIdx = active.idx;
       const ax = this.projX[aIdx];
@@ -228,12 +267,19 @@ export class AtlasRenderer {
 
     // 3. Depth-sorted nodes
     this.lastRenderedCount = n;
-    const ord = this.order.subarray(0, n);
+    if (n > 0) {
+      this.sortNodesByDepth(n);
+    }
+    const ord = this.order;
     const depths = this.projDepth;
-    ord.sort((a, b) => depths[a] - depths[b]);
 
     const activeFieldId = state.activeFieldId || null;
     const nodes = bridge.nodes;
+    let currentAlpha = 1.0;
+    let currentLineWidth = -1;
+    let currentFontSize = -1;
+    let labelAlignSet = false;
+
     for (let k = 0; k < n; k++) {
       const idx = ord[k];
       const node = nodes[idx];
@@ -255,8 +301,10 @@ export class AtlasRenderer {
         alpha *= 0.14;
       }
 
-      ctx.save();
-      ctx.globalAlpha = alpha;
+      if (alpha !== currentAlpha) {
+        ctx.globalAlpha = alpha;
+        currentAlpha = alpha;
+      }
 
       const rad = Math.max(3.0, nr * camera.scale);
       ctx.beginPath();
@@ -264,7 +312,10 @@ export class AtlasRenderer {
       ctx.fillStyle = node.color;
       ctx.fill();
 
-      ctx.lineWidth = 1.0;
+      if (currentLineWidth !== 1.0) {
+        ctx.lineWidth = 1.0;
+        currentLineWidth = 1.0;
+      }
       ctx.strokeStyle = isSelected
         ? '#ffffff'
         : isHovered
@@ -277,12 +328,21 @@ export class AtlasRenderer {
         const fontSize = isGiant
           ? Math.max(10, Math.min(14, rad * 0.45))
           : 11;
-        ctx.font = `${fontSize}px Georgia, serif`;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'top';
+        if (fontSize !== currentFontSize) {
+          ctx.font = `${fontSize}px Georgia, serif`;
+          currentFontSize = fontSize;
+        }
+        if (!labelAlignSet) {
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'top';
+          labelAlignSet = true;
+        }
         ctx.fillStyle = '#ffffff';
         ctx.strokeStyle = '#0e1013';
-        ctx.lineWidth = 2.5;
+        if (currentLineWidth !== 2.5) {
+          ctx.lineWidth = 2.5;
+          currentLineWidth = 2.5;
+        }
 
         const title =
           node.title.length > 26
@@ -291,8 +351,10 @@ export class AtlasRenderer {
         ctx.strokeText(title, px, py + rad + 3);
         ctx.fillText(title, px, py + rad + 3);
       }
+    }
 
-      ctx.restore();
+    if (currentAlpha !== 1.0) {
+      ctx.globalAlpha = 1.0;
     }
   }
 }
