@@ -141,7 +141,7 @@ impl Universe {
             edge_is_cross: Vec::new(),
             grid_2d: SpatialGrid2D::new(96, 96, -2400.0, 50.0),
             grid_3d: SpatialGrid3D::new(14),
-            nebula_grid_3d: SpatialGrid3D::new(10),
+            nebula_grid_3d: SpatialGrid3D::new(8),
             params: SimParams::default(),
             temperature: 1.0,
             globe_radius: 660.0,

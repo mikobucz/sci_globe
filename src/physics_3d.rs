@@ -124,14 +124,14 @@ pub fn step_3d(
         }
     }
 
-    // 2. Isotropic C1-Smooth Inter-field Spherical Nebula Repulsion using coarse spatial grid (zero voxel-grid artifacts, O(N))
+    // 2. O(N) Isotropic C1-Smooth Inter-field Spherical Nebula Repulsion via Field-Density Grid
     if params.nebula_repulsion > 0.0 {
         let rep_scale = params.nebula_repulsion * 0.00035 * temperature;
         let r_cut = params.nebula_cutoff.clamp(0.05, 1.2);
         let r_cut_sq = r_cut * r_cut;
         let inv_r_cut = 1.0 / r_cut;
 
-        nebula_grid.rebuild(sx, sy, sz);
+        nebula_grid.build_field_density(sx, sy, sz, field_idx);
 
         let cell_size = nebula_grid.cell_size();
         let dim = nebula_grid.dim;
@@ -140,10 +140,13 @@ pub fn step_3d(
         let search_radius = ((r_cut / cell_size).ceil() as i32).clamp(1, dim_i - 1);
 
         for i in 0..n {
+            if (i as i32) == dragged_idx {
+                continue;
+            }
             let ax = sx[i];
             let ay = sy[i];
             let az = sz[i];
-            let fa = field_idx[i];
+            let fa = (field_idx[i] as usize) & (MAX_FIELDS - 1);
 
             let (cx, cy, cz) = nebula_grid.cell_coords(ax, ay, az);
             let cx_i = cx as i32;
@@ -163,48 +166,44 @@ pub fn step_3d(
                     let yz_offset = z_offset + (ny as usize) * dim;
                     for nx in min_x..=max_x {
                         let c_idx = yz_offset + (nx as usize);
-                        let mut curr = nebula_grid.head[c_idx];
-                        if curr < 0 {
+                        let tot = nebula_grid.cell_tot[c_idx];
+                        if tot[3] <= 0.0 {
                             continue;
                         }
-                        while curr >= 0 {
-                            let j = curr as usize;
-                            curr = nebula_grid.next[j];
-                            if j <= i || field_idx[j] == fa {
-                                continue;
-                            }
-                            let dx = sx[j] - ax;
-                            if dx.abs() >= r_cut {
-                                continue;
-                            }
-                            let dy = sy[j] - ay;
-                            if dy.abs() >= r_cut {
-                                continue;
-                            }
-                            let dz = sz[j] - az;
-                            if dz.abs() >= r_cut {
-                                continue;
-                            }
-                            let chord_sq = dx * dx + dy * dy + dz * dz;
-                            if chord_sq < r_cut_sq && chord_sq > 1e-6 {
-                                let dist = chord_sq.sqrt();
-                                // Smooth C1 falloff: (1 - d/r_cut)^2 / (d + 0.05) -> exactly 0 smoothly at r_cut
-                                let q = 1.0 - dist * inv_r_cut;
-                                let push = rep_scale * (q * q) / (dist + 0.05);
-                                let nx_dir = dx / dist;
-                                let ny_dir = dy / dist;
-                                let nz_dir = dz / dist;
-                                if (i as i32) != dragged_idx {
-                                    svx[i] -= nx_dir * push;
-                                    svy[i] -= ny_dir * push;
-                                    svz[i] -= nz_dir * push;
-                                }
-                                if (j as i32) != dragged_idx {
-                                    svx[j] += nx_dir * push;
-                                    svy[j] += ny_dir * push;
-                                    svz[j] += nz_dir * push;
-                                }
-                            }
+                        let fld = nebula_grid.cell_fld[c_idx * 32 + fa];
+                        let foreign_cnt = tot[3] - fld[3];
+                        if foreign_cnt <= 0.5 {
+                            continue;
+                        }
+                        let inv_cnt = 1.0 / foreign_cnt;
+                        let fx = (tot[0] - fld[0]) * inv_cnt;
+                        let fy = (tot[1] - fld[1]) * inv_cnt;
+                        let fz = (tot[2] - fld[2]) * inv_cnt;
+
+                        let dx = fx - ax;
+                        if dx.abs() >= r_cut {
+                            continue;
+                        }
+                        let dy = fy - ay;
+                        if dy.abs() >= r_cut {
+                            continue;
+                        }
+                        let dz = fz - az;
+                        if dz.abs() >= r_cut {
+                            continue;
+                        }
+                        let chord_sq = dx * dx + dy * dy + dz * dz;
+                        if chord_sq < r_cut_sq && chord_sq > 1e-6 {
+                            let dist = chord_sq.sqrt();
+                            // Smooth C1 falloff: (1 - d/r_cut)^2 / (d + 0.05) -> exactly 0 smoothly at r_cut
+                            let q = 1.0 - dist * inv_r_cut;
+                            let push = rep_scale * foreign_cnt * (q * q) / (dist + 0.05);
+                            let nx_dir = dx / dist;
+                            let ny_dir = dy / dist;
+                            let nz_dir = dz / dist;
+                            svx[i] -= nx_dir * push;
+                            svy[i] -= ny_dir * push;
+                            svz[i] -= nz_dir * push;
                         }
                     }
                 }
@@ -331,4 +330,116 @@ pub fn step_3d(
         temperature,
         dragged_idx,
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn chord_dist(ax: f32, ay: f32, az: f32, bx: f32, by: f32, bz: f32) -> f32 {
+        let dx = ax - bx;
+        let dy = ay - by;
+        let dz = az - bz;
+        (dx * dx + dy * dy + dz * dz).sqrt()
+    }
+
+    fn assert_normalized_no_nan(sx: &[f32], sy: &[f32], sz: &[f32], svx: &[f32], svy: &[f32], svz: &[f32]) {
+        for i in 0..sx.len() {
+            assert!(!sx[i].is_nan() && !sy[i].is_nan() && !sz[i].is_nan(), "NaN in position at {}", i);
+            assert!(!svx[i].is_nan() && !svy[i].is_nan() && !svz[i].is_nan(), "NaN in velocity at {}", i);
+            let norm = (sx[i] * sx[i] + sy[i] * sy[i] + sz[i] * sz[i]).sqrt();
+            assert!((norm - 1.0).abs() < 1e-5, "Node {} not on S^2: norm={}", i, norm);
+        }
+    }
+
+    fn run_two_node_nebula_case(p1: [f32; 3], p2: [f32; 3], fields: [u16; 2]) -> (f32, f32) {
+        let mut sx = vec![p1[0], p2[0]];
+        let mut sy = vec![p1[1], p2[1]];
+        let mut sz = vec![p1[2], p2[2]];
+        let mut svx = vec![0.0, 0.0];
+        let mut svy = vec![0.0, 0.0];
+        let mut svz = vec![0.0, 0.0];
+        let r = [0.01, 0.01];
+        let mass = [1.0, 1.0];
+        let inv_mass = [1.0, 1.0];
+        let deg_factor = [1.0, 1.0];
+        let mut grid = SpatialGrid3D::new(16);
+        let mut nebula_grid = SpatialGrid3D::new(8);
+        let params = SimParams {
+            anchor_strength: 0.0,
+            subfield_cohesion: 0.0,
+            nebula_repulsion: 1.0,
+            nebula_cutoff: 0.45,
+            spring_stiffness: 0.0,
+            collision_margin: 0.0,
+            ..SimParams::default()
+        };
+
+        let dist_before = chord_dist(sx[0], sy[0], sz[0], sx[1], sy[1], sz[1]);
+        step_3d(
+            &mut sx,
+            &mut sy,
+            &mut sz,
+            &mut svx,
+            &mut svy,
+            &mut svz,
+            &r,
+            &mass,
+            &inv_mass,
+            &deg_factor,
+            &[p1[0], p2[0]],
+            &[p1[1], p2[1]],
+            &[p1[2], p2[2]],
+            &fields,
+            &[],
+            &[],
+            &[],
+            &[],
+            &mut grid,
+            &mut nebula_grid,
+            &params,
+            400.0,
+            1.0,
+            -1,
+        );
+        assert_normalized_no_nan(&sx, &sy, &sz, &svx, &svy, &svz);
+        let dist_after = chord_dist(sx[0], sy[0], sz[0], sx[1], sy[1], sz[1]);
+        (dist_before, dist_after)
+    }
+
+    #[test]
+    fn test_nebula_repulsion_field_density_grid() {
+        // Two unit vectors within r_cut = 0.45 (chord distance ~ 0.2005)
+        let p0 = [0.0_f32, 0.0, 1.0];
+        let z1 = (1.0_f32 - 0.2 * 0.2).sqrt();
+        let p1_close = [0.2_f32, 0.0, z1];
+
+        // 1. Different fields within r_cut -> pushed apart
+        let (d_before, d_after) = run_two_node_nebula_case(p0, p1_close, [0, 1]);
+        assert!(
+            d_after > d_before + 1e-6,
+            "Expected different-field nodes within r_cut to repel: before={}, after={}",
+            d_before,
+            d_after
+        );
+
+        // 2. Same field within r_cut -> no nebula repulsion
+        let (d_same_before, d_same_after) = run_two_node_nebula_case(p0, p1_close, [0, 0]);
+        assert!(
+            (d_same_after - d_same_before).abs() < 1e-6,
+            "Expected same-field nodes not to repel: before={}, after={}",
+            d_same_before,
+            d_same_after
+        );
+
+        // 3. Different fields beyond r_cut (chord distance ~ 0.8944 > 0.45) -> no repulsion
+        let p1_far = [0.8_f32, 0.0, 0.6];
+        let (d_far_before, d_far_after) = run_two_node_nebula_case(p0, p1_far, [0, 1]);
+        assert!(
+            (d_far_after - d_far_before).abs() < 1e-6,
+            "Expected nodes beyond r_cut not to repel: before={}, after={}",
+            d_far_before,
+            d_far_after
+        );
+    }
 }

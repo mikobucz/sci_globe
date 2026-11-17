@@ -73,6 +73,8 @@ pub struct SpatialGrid3D {
     pub inv_cell_size: f32,
     pub head: Vec<i32>,
     pub next: Vec<i32>,
+    pub cell_tot: Vec<[f32; 4]>,
+    pub cell_fld: Vec<[f32; 4]>,
 }
 
 impl SpatialGrid3D {
@@ -86,6 +88,8 @@ impl SpatialGrid3D {
             inv_cell_size: 1.0 / cell_size,
             head: vec![-1; dim * dim * dim],
             next: Vec::new(),
+            cell_tot: Vec::new(),
+            cell_fld: Vec::new(),
         }
     }
 
@@ -148,6 +152,49 @@ impl SpatialGrid3D {
     #[inline]
     pub fn cell_size(&self) -> f32 {
         1.0 / self.inv_cell_size
+    }
+
+    #[inline]
+    pub fn build_field_density(&mut self, sx: &[f32], sy: &[f32], sz: &[f32], field_idx: &[u16]) {
+        let dim = self.dim;
+        let dim_i = dim as i32;
+        let dim_sq = dim * dim;
+        let total_cells = dim_sq * dim;
+        let total_fld = total_cells * 32;
+
+        if self.cell_tot.len() < total_cells {
+            self.cell_tot.resize(total_cells, [0.0; 4]);
+        }
+        self.cell_tot[..total_cells].fill([0.0; 4]);
+
+        if self.cell_fld.len() < total_fld {
+            self.cell_fld.resize(total_fld, [0.0; 4]);
+        }
+        self.cell_fld[..total_fld].fill([0.0; 4]);
+
+        let n = sx.len();
+        for i in 0..n {
+            let x = sx[i];
+            let y = sy[i];
+            let z = sz[i];
+            let cx = (((x - self.min_coord) * self.inv_cell_size) as i32).clamp(0, dim_i - 1) as usize;
+            let cy = (((y - self.min_coord) * self.inv_cell_size) as i32).clamp(0, dim_i - 1) as usize;
+            let cz = (((z - self.min_coord) * self.inv_cell_size) as i32).clamp(0, dim_i - 1) as usize;
+            let cell_idx = cz * dim_sq + cy * dim + cx;
+            let f = (field_idx[i] as usize) & 31;
+
+            let tot = &mut self.cell_tot[cell_idx];
+            tot[0] += x;
+            tot[1] += y;
+            tot[2] += z;
+            tot[3] += 1.0;
+
+            let fld = &mut self.cell_fld[cell_idx * 32 + f];
+            fld[0] += x;
+            fld[1] += y;
+            fld[2] += z;
+            fld[3] += 1.0;
+        }
     }
 }
 
