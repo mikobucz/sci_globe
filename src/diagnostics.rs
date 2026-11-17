@@ -796,9 +796,17 @@ pub fn run_profiled_simulation(u: &mut Universe, max_steps: u32) -> StepProfile 
             let same_hardness = 1.0 - (ghost_factor * 0.75 * t_norm * t_norm);
             let cross_hardness = 1.0 - (ghost_factor * 0.98 * t_norm.powf(0.65));
 
+            let mut max_r = 4.0f32;
+            for &ri in u.r.iter() {
+                if ri > max_r {
+                    max_r = ri;
+                }
+            }
+            let max_chord_bound = (2.0 * max_r + u.params.collision_margin) * inv_globe * 1.02;
+
             for _pass in 0..2 {
                 let tg = Instant::now();
-                u.grid_3d.rebuild(&u.sx, &u.sy, &u.sz);
+                u.grid_3d.rebuild_adaptive(&u.sx, &u.sy, &u.sz, max_chord_bound, 36);
                 prof.grid_rebuild_us += tg.elapsed().as_secs_f64() * 1e6;
 
                 let tp = Instant::now();

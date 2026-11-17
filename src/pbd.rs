@@ -159,8 +159,16 @@ pub fn resolve_collisions_3d(
     let cross_hardness = 1.0 - (ghost_factor * 0.98 * t_norm.powf(0.65));
     let inv_globe = 1.0 / globe_radius;
 
+    let mut max_r = 4.0f32;
+    for &ri in r.iter() {
+        if ri > max_r {
+            max_r = ri;
+        }
+    }
+    let max_chord_bound = (2.0 * max_r + collision_margin) * inv_globe * 1.02;
+
     for _pass in 0..2 {
-        grid.rebuild(sx, sy, sz);
+        grid.rebuild_adaptive(sx, sy, sz, max_chord_bound, 36);
         let dim = grid.dim;
         let dim_sq = dim * dim;
 
@@ -437,5 +445,95 @@ mod tests {
                 "node {i} drifted off S^2: norm = {norm}"
             );
         }
+    }
+
+    #[test]
+    fn resolve_collisions_3d_adaptive_grid_scales_dim_and_separates_pairs() {
+        let globe_radius = 660.0;
+        let collision_margin = 2.0_f32;
+
+        // Case 1: Small node radii -> finer grid (dim = 36)
+        let r_small = [6.0_f32, 6.0_f32];
+        let min_ang_small = (r_small[0] + r_small[1] + collision_margin) / globe_radius;
+        let min_chord_small = 2.0 * (min_ang_small * 0.5).sin();
+        let theta_small = 0.005_f32;
+        let mut sx = [1.0_f32, theta_small.cos()];
+        let mut sy = [0.0_f32, theta_small.sin()];
+        let mut sz = [0.0_f32, 0.0_f32];
+        let mut svx = [0.0_f32; 2];
+        let mut svy = [0.0_f32; 2];
+        let mut svz = [0.0_f32; 2];
+        let inv_mass = [1.0_f32; 2];
+        let field_idx = [0_u16; 2];
+        let mut grid = SpatialGrid3D::new(14);
+
+        for _ in 0..25 {
+            resolve_collisions_3d(
+                &mut sx,
+                &mut sy,
+                &mut sz,
+                &mut svx,
+                &mut svy,
+                &mut svz,
+                &r_small,
+                &inv_mass,
+                &field_idx,
+                &mut grid,
+                globe_radius,
+                collision_margin,
+                0.0,
+                0.0,
+                -1,
+            );
+        }
+        let small_dim = grid.dim;
+        assert_eq!(small_dim, 36, "expected max_dim=36 for small radii, got {small_dim}");
+        let final_chord_small = chord_dist(sx[0], sy[0], sz[0], sx[1], sy[1], sz[1]);
+        assert!(
+            final_chord_small >= min_chord_small - 1e-4,
+            "small radii: expected final chord {final_chord_small} >= {min_chord_small}"
+        );
+
+        // Case 2: Large node radii -> coarser grid (dim < 14) so 3x3x3 still covers overlaps
+        let r_large = [80.0_f32, 80.0_f32];
+        let min_ang_large = (r_large[0] + r_large[1] + collision_margin) / globe_radius;
+        let min_chord_large = 2.0 * (min_ang_large * 0.5).sin();
+        let theta_large = 0.15_f32;
+        let mut lx = [1.0_f32, theta_large.cos()];
+        let mut ly = [0.0_f32, theta_large.sin()];
+        let mut lz = [0.0_f32, 0.0_f32];
+        let mut lvx = [0.0_f32; 2];
+        let mut lvy = [0.0_f32; 2];
+        let mut lvz = [0.0_f32; 2];
+
+        for _ in 0..35 {
+            resolve_collisions_3d(
+                &mut lx,
+                &mut ly,
+                &mut lz,
+                &mut lvx,
+                &mut lvy,
+                &mut lvz,
+                &r_large,
+                &inv_mass,
+                &field_idx,
+                &mut grid,
+                globe_radius,
+                collision_margin,
+                0.0,
+                0.0,
+                -1,
+            );
+        }
+        let large_dim = grid.dim;
+        assert!(
+            large_dim < small_dim && large_dim < 14,
+            "expected coarser dim < 14 for large radii, got {large_dim} (small was {small_dim})"
+        );
+        let final_chord_large = chord_dist(lx[0], ly[0], lz[0], lx[1], ly[1], lz[1]);
+        assert!(
+            final_chord_large >= min_chord_large - 1e-4,
+            "large radii: expected final chord {final_chord_large} >= {min_chord_large}"
+        );
     }
 }
