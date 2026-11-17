@@ -128,7 +128,7 @@ function rebuildActiveSubset() {
 }
 
 function markSimActive() {
-  bridge.universe.reheat();
+  bridge.reheat();
   state.isSimRunning = true;
   state.simStartTime = Date.now();
   statusDot.className = 'status-dot';
@@ -159,7 +159,7 @@ function scrambleConfetti(rollNewSeed = true) {
     seedInput.value = seedVal;
     state.params.scrambleSeed = seedVal;
   }
-  bridge.universe.scramble(seedVal >>> 0, true);
+  bridge.scramble(seedVal >>> 0, true);
   markSimActive();
 }
 
@@ -211,7 +211,7 @@ function setupSidebarBindings() {
       numInput.value = val;
       state.params[paramKey] = val;
       if (paramKey !== 'simSpeed') {
-        bridge.universe.set_param(paramKey, val);
+        bridge.setParam(paramKey, val);
       }
       markSimActive();
     });
@@ -228,7 +228,7 @@ function setupSidebarBindings() {
       slider.value = val;
       state.params[paramKey] = val;
       if (paramKey !== 'simSpeed') {
-        bridge.universe.set_param(paramKey, val);
+        bridge.setParam(paramKey, val);
       }
       markSimActive();
     });
@@ -963,7 +963,7 @@ function setupEventListeners() {
     const found = findNodeAtScreen(e.clientX, e.clientY);
     if (found) {
       state.draggedNode = found;
-      bridge.universe.set_dragged_node(found.idx);
+      bridge.setDraggedNode(found.idx);
       markSimActive();
       return;
     }
@@ -974,7 +974,7 @@ function setupEventListeners() {
   window.addEventListener('mouseup', () => {
     isPanning = false;
     if (state.draggedNode) {
-      bridge.universe.set_dragged_node(-1);
+      bridge.setDraggedNode(-1);
       state.draggedNode = null;
     }
   });
@@ -993,7 +993,7 @@ function setupEventListeners() {
         state.camera,
         state.params.globeRadius || 660
       );
-      bridge.universe.move_node_3d(state.draggedNode.idx, sp.sx, sp.sy, sp.sz);
+      bridge.moveNode3d(state.draggedNode.idx, sp.sx, sp.sy, sp.sz);
       return;
     }
 
@@ -1234,8 +1234,8 @@ function flyToNode(n) {
 
 function mainLoop() {
   if (!state.isPaused) {
-    const temp = bridge.universe.step(state.params.simSpeed);
-    if (temp < 0.004 && state.isSimRunning) {
+    bridge.requestStep(state.params.simSpeed);
+    if (bridge.hasStepResult && bridge.lastTemp < 0.004 && state.isSimRunning) {
       state.isSimRunning = false;
       statusDot.className = 'status-dot frozen';
       statusText.innerText = 'Converged';

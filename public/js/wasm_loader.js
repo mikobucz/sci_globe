@@ -78,10 +78,53 @@ export function parseSnapshotPayload(raw) {
   return { positionsMap, meta };
 }
 
+const PARAM_KEYS = [
+  'radiusScale',
+  'anchorStrength',
+  'subfieldCohesion',
+  'ghostAnnealing',
+  'nebulaRepulsion',
+  'nebulaCutoff',
+  'centerGravity',
+  'giantGravity',
+  'springStiffness',
+  'degreeNorm',
+  'bridgeMult',
+  'springGap',
+  'sizeExponent',
+  'massExponent',
+  'collisionMargin',
+  'globeRadius',
+];
+
+function emptyViews() {
+  return {
+    count: 0,
+    x: new Float32Array(0),
+    y: new Float32Array(0),
+    sx: new Float32Array(0),
+    sy: new Float32Array(0),
+    sz: new Float32Array(0),
+    r: new Float32Array(0),
+  };
+}
+
 export class SimBridge {
   constructor() {
     this.wasm = null;
     this.universe = null;
+    this.worker = null;
+    this.useWorker = false;
+
+    this.views = emptyViews();
+    this._recycledBuffers = null;
+    this.stepInFlight = false;
+    this.lastTemp = 1.0;
+    this.hasStepResult = false;
+
+    this._cachedDirectViews = null;
+    this._cachedDirectBuf = null;
+    this._cachedDirectPtrs = null;
 
     this.fullRawData = null;
     this.zones = [];
@@ -94,9 +137,138 @@ export class SimBridge {
     this.nodeMap = new Map(); // id -> node object (with .idx)
   }
 
-  async initialize() {
+  async initialize(options = {}) {
+    const allowWorker = options.useWorker !== false && typeof Worker !== 'undefined';
+    if (allowWorker) {
+      try {
+        await this._initWorker();
+        return;
+      } catch (err) {
+        console.warn('SimBridge worker init failed, falling back to main-thread WASM:', err);
+        this.terminate();
+      }
+    }
+
+    this.useWorker = false;
     this.wasm = await init();
     this.universe = new WasmUniverse();
+  }
+
+  _initWorker() {
+    return new Promise((resolve, reject) => {
+      let settled = false;
+      const worker = new Worker(new URL('./sim_worker.js', import.meta.url), {
+        type: 'module',
+      });
+      this.worker = worker;
+
+      const onInitError = (err) => {
+        if (!settled) {
+          settled = true;
+          reject(err instanceof Error ? err : new Error(String(err?.message || err || 'Worker init error')));
+        }
+      };
+
+      worker.onerror = onInitError;
+      worker.onmessage = (e) => {
+        const msg = e.data;
+        if (!msg || !msg.type) return;
+
+        if (!settled) {
+          if (msg.type === 'ready') {
+            settled = true;
+            this.useWorker = true;
+            worker.onerror = (err) => {
+              console.error('SimBridge worker error:', err);
+            };
+            resolve();
+            return;
+          }
+          if (msg.type === 'init_error') {
+            onInitError(msg.error);
+            return;
+          }
+        }
+
+        this._handleWorkerMessage(msg);
+      };
+
+      worker.postMessage({ type: 'init' });
+    });
+  }
+
+  _handleWorkerMessage(msg) {
+    if (msg.type !== 'frame') return;
+
+    if (msg.fromStep) {
+      this.stepInFlight = false;
+      this.hasStepResult = true;
+    }
+    if (typeof msg.temp === 'number') {
+      this.lastTemp = msg.temp;
+    }
+
+    const prev = this.views;
+    if (
+      prev &&
+      prev.count === msg.count &&
+      prev.count > 0 &&
+      prev.x &&
+      prev.x.buffer.byteLength > 0
+    ) {
+      this._recycledBuffers = {
+        x: prev.x,
+        y: prev.y,
+        sx: prev.sx,
+        sy: prev.sy,
+        sz: prev.sz,
+        r: prev.r,
+      };
+    }
+
+    this.views = {
+      count: msg.count,
+      x: msg.x,
+      y: msg.y,
+      sx: msg.sx,
+      sy: msg.sy,
+      sz: msg.sz,
+      r: msg.r,
+    };
+  }
+
+  _takeRecycledBuffers(expectedCount) {
+    const buf = this._recycledBuffers;
+    if (
+      buf &&
+      buf.x instanceof Float32Array &&
+      buf.x.length === expectedCount &&
+      buf.x.buffer.byteLength > 0
+    ) {
+      this._recycledBuffers = null;
+      return buf;
+    }
+    return null;
+  }
+
+  _transferList(buffers) {
+    return [
+      buffers.x.buffer,
+      buffers.y.buffer,
+      buffers.sx.buffer,
+      buffers.sy.buffer,
+      buffers.sz.buffer,
+      buffers.r.buffer,
+    ];
+  }
+
+  terminate() {
+    if (this.worker) {
+      this.worker.terminate();
+      this.worker = null;
+    }
+    this.useWorker = false;
+    this.stepInFlight = false;
   }
 
   async loadDatasetFile(datasetName) {
@@ -166,7 +338,7 @@ export class SimBridge {
 
     this._uploadActiveListToWasm(activeList, params, isGlobe, null, rng);
     const scSeed = parseInt(params.scrambleSeed, 10) || 42;
-    this.universe.scramble(scSeed >>> 0, isGlobe);
+    this.scramble(scSeed >>> 0, isGlobe);
   }
 
   /**
@@ -175,7 +347,7 @@ export class SimBridge {
   loadPrecomputedSubset(params, positionsMap, isGlobe) {
     const activeList = this.allAvailableNodes.filter((n) => positionsMap.has(String(n.id)));
     this._uploadActiveListToWasm(activeList, params, isGlobe, positionsMap, null);
-    this.universe.freeze();
+    this.freeze();
     return {
       loadedCount: activeList.length,
       requestedCount: positionsMap.size,
@@ -276,6 +448,64 @@ export class SimBridge {
       edgeW[i] = validEdges[i].weight;
     }
 
+    if (this.useWorker && this.worker) {
+      this.views = emptyViews();
+      this._recycledBuffers = null;
+      this.stepInFlight = false;
+      this.hasStepResult = false;
+      this.lastTemp = 1.0;
+
+      const filteredParams = {};
+      if (params) {
+        for (const k of PARAM_KEYS) {
+          if (params[k] !== undefined) filteredParams[k] = params[k];
+        }
+      }
+
+      const transfers = [
+        initX.buffer,
+        initY.buffer,
+        initSx.buffer,
+        initSy.buffer,
+        initSz.buffer,
+        anchorX.buffer,
+        anchorY.buffer,
+        anchorSx.buffer,
+        anchorSy.buffer,
+        anchorSz.buffer,
+        citations.buffer,
+        fieldIdx.buffer,
+        edgeU.buffer,
+        edgeV.buffer,
+        edgeW.buffer,
+      ];
+
+      this.worker.postMessage(
+        {
+          type: 'load_graph',
+          isGlobe,
+          params: filteredParams,
+          initX,
+          initY,
+          initSx,
+          initSy,
+          initSz,
+          anchorX,
+          anchorY,
+          anchorSx,
+          anchorSy,
+          anchorSz,
+          citations,
+          fieldIdx,
+          edgeU,
+          edgeV,
+          edgeW,
+        },
+        transfers
+      );
+      return;
+    }
+
     this.universe.set_view_mode(isGlobe);
     this.syncAllParams(params);
     this.universe.load_graph(
@@ -301,55 +531,183 @@ export class SimBridge {
     const views = this.getViews();
     const out = {};
     const round6 = (v) => Math.round(v * 1e6) / 1e6;
-    for (let i = 0; i < this.nodes.length; i++) {
+    const len = Math.min(this.nodes.length, views.count);
+    for (let i = 0; i < len; i++) {
       const id = this.nodes[i].id;
       out[id] = [round6(views.sx[i]), round6(views.sy[i]), round6(views.sz[i])];
     }
     return out;
   }
 
+  setViewMode(isGlobe) {
+    if (this.useWorker && this.worker) {
+      this.worker.postMessage({ type: 'set_view_mode', isGlobe: !!isGlobe });
+      return;
+    }
+    if (this.universe) this.universe.set_view_mode(!!isGlobe);
+  }
+
+  setParam(k, v) {
+    this.hasStepResult = false;
+    if (this.useWorker && this.worker) {
+      this.worker.postMessage({ type: 'set_param', key: k, val: v });
+      return;
+    }
+    if (this.universe) this.universe.set_param(k, v);
+  }
+
   syncAllParams(params) {
+    if (!params) return;
+    if (this.useWorker && this.worker) {
+      const filtered = {};
+      for (const k of PARAM_KEYS) {
+        if (params[k] !== undefined) filtered[k] = params[k];
+      }
+      this.worker.postMessage({ type: 'sync_all_params', params: filtered });
+      return;
+    }
     if (!this.universe) return;
-    const keys = [
-      'radiusScale',
-      'anchorStrength',
-      'subfieldCohesion',
-      'ghostAnnealing',
-      'nebulaRepulsion',
-      'nebulaCutoff',
-      'centerGravity',
-      'giantGravity',
-      'springStiffness',
-      'degreeNorm',
-      'bridgeMult',
-      'springGap',
-      'sizeExponent',
-      'massExponent',
-      'collisionMargin',
-      'globeRadius',
-    ];
-    for (const k of keys) {
+    for (const k of PARAM_KEYS) {
       if (params[k] !== undefined) {
         this.universe.set_param(k, params[k]);
       }
     }
   }
 
+  reheat() {
+    this.hasStepResult = false;
+    this.lastTemp = 1.0;
+    if (this.useWorker && this.worker) {
+      this.worker.postMessage({ type: 'reheat' });
+      return;
+    }
+    if (this.universe) this.universe.reheat();
+  }
+
+  scramble(seed, isGlobe) {
+    this.hasStepResult = false;
+    this.lastTemp = 1.0;
+    const s = seed >>> 0;
+    if (this.useWorker && this.worker) {
+      this.worker.postMessage({ type: 'scramble', seed: s, isGlobe: !!isGlobe });
+      return;
+    }
+    if (this.universe) this.universe.scramble(s, !!isGlobe);
+  }
+
+  setDraggedNode(idx) {
+    if (this.useWorker && this.worker) {
+      this.worker.postMessage({ type: 'set_dragged_node', idx });
+      return;
+    }
+    if (this.universe) this.universe.set_dragged_node(idx);
+  }
+
+  moveNode3d(idx, sx, sy, sz) {
+    // Immediate main-thread update for 0-latency visual feedback during dragging
+    if (this.views && idx >= 0 && idx < this.views.count) {
+      this.views.sx[idx] = sx;
+      this.views.sy[idx] = sy;
+      this.views.sz[idx] = sz;
+    }
+    if (this.useWorker && this.worker) {
+      this.worker.postMessage({ type: 'move_node_3d', idx, sx, sy, sz });
+      return;
+    }
+    if (this.universe) this.universe.move_node_3d(idx, sx, sy, sz);
+  }
+
+  applyPositions(positions) {
+    if (this.useWorker && this.worker) {
+      this.worker.postMessage({ type: 'apply_positions', positions });
+      return;
+    }
+    if (this.universe && Array.isArray(positions)) {
+      for (let i = 0; i < positions.length; i++) {
+        const p = positions[i];
+        if (Array.isArray(p)) {
+          this.universe.move_node_3d(p[0], p[1], p[2], p[3]);
+        } else if (p && typeof p === 'object') {
+          this.universe.move_node_3d(p.idx, p.sx, p.sy, p.sz);
+        }
+      }
+    }
+  }
+
+  freeze() {
+    this.hasStepResult = false;
+    if (this.useWorker && this.worker) {
+      this.worker.postMessage({ type: 'freeze' });
+      return;
+    }
+    if (this.universe) this.universe.freeze();
+  }
+
+  requestStep(simSpeed) {
+    if (this.useWorker && this.worker) {
+      if (this.stepInFlight) return false;
+      this.stepInFlight = true;
+      const buffers = this._takeRecycledBuffers(this.views.count);
+      if (buffers) {
+        this.worker.postMessage(
+          { type: 'step', simSpeed, buffers },
+          this._transferList(buffers)
+        );
+      } else {
+        this.worker.postMessage({ type: 'step', simSpeed });
+      }
+      return true;
+    }
+    if (!this.universe) return false;
+    this.lastTemp = this.universe.step(simSpeed);
+    this.hasStepResult = true;
+    return true;
+  }
+
   /**
-   * Returns Zero-Copy Float32Array views directly over WebAssembly linear memory.
+   * Returns latest Float32Array views (from worker ping-pong buffers or zero-copy WASM memory).
    */
   getViews() {
+    if (this.useWorker) {
+      return this.views;
+    }
     const count = this.universe.node_count();
     const buf = this.wasm.memory.buffer;
-    return {
+    const xPtr = this.universe.x_ptr();
+    const yPtr = this.universe.y_ptr();
+    const sxPtr = this.universe.sx_ptr();
+    const syPtr = this.universe.sy_ptr();
+    const szPtr = this.universe.sz_ptr();
+    const rPtr = this.universe.r_ptr();
+
+    const p = this._cachedDirectPtrs;
+    if (
+      this._cachedDirectViews &&
+      this._cachedDirectViews.count === count &&
+      this._cachedDirectBuf === buf &&
+      p &&
+      p[0] === xPtr &&
+      p[1] === yPtr &&
+      p[2] === sxPtr &&
+      p[3] === syPtr &&
+      p[4] === szPtr &&
+      p[5] === rPtr
+    ) {
+      return this._cachedDirectViews;
+    }
+
+    this._cachedDirectBuf = buf;
+    this._cachedDirectPtrs = [xPtr, yPtr, sxPtr, syPtr, szPtr, rPtr];
+    this._cachedDirectViews = {
       count,
-      x: new Float32Array(buf, this.universe.x_ptr(), count),
-      y: new Float32Array(buf, this.universe.y_ptr(), count),
-      sx: new Float32Array(buf, this.universe.sx_ptr(), count),
-      sy: new Float32Array(buf, this.universe.sy_ptr(), count),
-      sz: new Float32Array(buf, this.universe.sz_ptr(), count),
-      r: new Float32Array(buf, this.universe.r_ptr(), count),
+      x: new Float32Array(buf, xPtr, count),
+      y: new Float32Array(buf, yPtr, count),
+      sx: new Float32Array(buf, sxPtr, count),
+      sy: new Float32Array(buf, syPtr, count),
+      sz: new Float32Array(buf, szPtr, count),
+      r: new Float32Array(buf, rPtr, count),
     };
+    return this._cachedDirectViews;
   }
 }
 
